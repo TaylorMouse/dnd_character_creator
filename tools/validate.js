@@ -54,7 +54,8 @@ app=app.replace("populateLevels();showEdition();",
  "featAsiPicks:featAsiPicks,featAsiPending:featAsiPending,asiResolved:asiResolved,"+
  "featureAttacks:featureAttacks,featureSkillChoice:featureSkillChoice,featureSkillPicks:featureSkillPicks,"+
  "featuresAndTraits:featuresAndTraits,condNotesFor:condNotesFor,officialLanguages:officialLanguages,languagesAll:languagesAll,mergedLanguages:mergedLanguages,"+
- "defences:defences,expertiseSkills:expertiseSkills,skillBonus:skillBonus,passiveScore:passiveScore};");
+ "defences:defences,expertiseSkills:expertiseSkills,skillBonus:skillBonus,passiveScore:passiveScore,"+
+ "itemMechanics:itemMechanics,skillAdvantage:skillAdvantage};");
 eval(app);
 var C=window.__cc,S=C.state;
 
@@ -518,6 +519,41 @@ checkTrue("  no raw 5etools tags leak through",(function(){for(var i=0;i<dfn.adv
 S.race={name:"Aasimar",source:"MPMM"};
 var dfn2=C.defences();
 checkTrue("  Aasimar resists necrotic and radiant",dfn2.resist.length>=2);
+
+
+// =====================================================================
+section("7l. Armour mechanics, stealth penalty and skill advantage flags");
+setup("paladin-classic","Paladin",6);       // Str 15 from the standard array
+function findItem(nm){var L=window.CC_ITEMS;for(var i=0;i<L.length;i++)if(L[i].name===nm)return L[i];return null;}
+var plate=findItem("Plate Armor");
+checkTrue("  Plate Armor is in the data",!!plate);
+if(plate){
+  check("  its AC",plate.ac,18);
+  checkTrue("  it carries the stealth penalty",!!plate.stealthDis);
+  check("  and a minimum Strength",plate.strReq,15);
+  var mech=C.itemMechanics(plate);
+  check("  two mechanical sentences are produced",mech.length,2);
+  checkTrue("  ...the stealth one",mech.join(" ").indexOf("disadvantage on Dexterity (Stealth)")>=0);
+  checkTrue("  ...the Strength one",mech.join(" ").indexOf("lower than 15")>=0);
+}
+// wearing it flags Stealth and, if too weak, costs speed
+S.equipment.inventory=[{name:"Plate Armor",source:"PHB",cat:"Armor",ac:18,armorKind:"heavy",stealthDis:true,strReq:15,qty:1,equipped:true}];
+var ad=C.skillAdvantage();
+checkTrue("  Stealth is flagged with disadvantage",!!(ad["Stealth"]&&ad["Stealth"].dis.length));
+check("  Strength 15 meets the requirement, so full speed",C.speedInfo().total,30);
+S.abilities.base.Strength=8;
+check("  Strength 8 in plate loses 10 feet",C.speedInfo().total,20);
+// light armour has neither
+setup("paladin-classic","Paladin",6);
+S.equipment.inventory=[{name:"Leather Armor",source:"PHB",cat:"Armor",ac:11,armorKind:"light",qty:1,equipped:true}];
+var ad2=C.skillAdvantage();
+checkTrue("  leather armour does not flag Stealth",!(ad2["Stealth"]&&ad2["Stealth"].dis.length));
+check("  ...and does not slow you",C.speedInfo().total,30);
+// a feature that grants advantage on a skill is flagged
+setup("ranger-classic","Ranger",6);
+var ad3=C.skillAdvantage();
+checkTrue("  Ranger Favored Enemy flags Survival",!!(ad3["Survival"]&&ad3["Survival"].adv.length));
+checkTrue("  ...named and marked situational",ad3["Survival"].adv.join(";").indexOf("situational")>=0);
 
 // =====================================================================
 section("8. Data integrity");

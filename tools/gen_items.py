@@ -40,6 +40,10 @@ def slim(it):
     if it.get("armor") or tc in ("LA","MA","HA","S"):
         o["ac"]=it.get("ac"); o["armorKind"]=ARMOR_KIND.get(tc,"")
         if it.get("stealth"): o["stealthDis"]=True
+        # minimum Strength; below it the wearer's speed drops by 10 feet
+        if it.get("strength"):
+            try: o["strReq"]=int(str(it["strength"]))
+            except Exception: pass
     # weapon
     if it.get("weaponCategory") or tc in ("M","R"):
         o["dmg"]=it.get("dmg1"); o["dmgType"]=it.get("dmgType")

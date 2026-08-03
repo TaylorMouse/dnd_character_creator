@@ -1124,6 +1124,18 @@
     }
     return loose;
   }
+  // 5etools keeps armour mechanics in fields, not in the description, so build those
+  // sentences ourselves: the stealth penalty and the minimum-Strength speed rule.
+  function itemMechanics(it){
+    var info=itemInfo(it.name,it.source)||it||{},out=[];
+    if(info.stealthDis)out.push("The wearer has disadvantage on Dexterity (Stealth) checks.");
+    if(info.strReq)out.push("If the wearer has a Strength score lower than "+info.strReq+", their speed is reduced by 10 feet.");
+    return out;
+  }
+  function itemEntriesFull(it){
+    var info=itemInfo(it.name,it.source)||it||{};
+    return itemMechanics(it).concat(info.entries||it.entries||[]);
+  }
   var _itemByKey=null;
   function itemInfo(name,source){if(!_itemByKey){_itemByKey={};(window.CC_ITEMS||[]).forEach(function(it){_itemByKey[it.name+"|"+(it.source||"")]=it;});}return _itemByKey[name+"|"+(source||"")]||null;}
   function addItemObj(it){
@@ -1367,8 +1379,8 @@
     var html=shown.map(function(it){
       var att=it.attune?" · "+attuneNote(it.attune):"";
       var meta=it.cat+(it.rarity&&it.rarity!=="none"?" · "+it.rarity:"")+(it.dmg?" · "+it.dmg+" "+dmgAbbr(it.dmgType):"")+(it.ac?" · AC "+it.ac:"")+att;
-      var hasDesc=it.entries&&it.entries.length;
-      var desc=hasDesc?'<div class="inv-desc">'+it.entries.map(renderEntry).join("")+"</div>":"";
+      var full=itemEntriesFull(it),hasDesc=full.length;
+      var desc=hasDesc?'<div class="inv-desc">'+full.map(renderEntry).join("")+"</div>":"";
       return '<div class="inv-res-item"><div class="item-row"><div class="res-name-click">'+
         '<div class="nm">'+esc(it.name)+rarBadge(it.rarity)+(hasDesc?' <span class="inv-chev">&#9662;</span>':"")+'</div>'+
         '<div class="meta">'+esc(meta)+" · "+srcTag(it.source)+'</div></div>'+
@@ -1404,7 +1416,7 @@
     var html='<div class="stat-box"><div><div class="sv">'+computeAC()+'</div><div class="sl">Armor Class</div></div><div><div class="sv">'+modStr(dex)+'</div><div class="sl">Initiative</div></div><div><div class="sv">'+inv.length+'</div><div class="sl">Items</div></div></div>';
     if(!inv.length)html+='<p class="sec-note">No items yet. Add starting equipment or browse above.</p>';
     inv.forEach(function(it,i){
-      var att=itemAttune(it),info=itemInfo(it.name,it.source),hasDesc=info&&info.entries&&info.entries.length;
+      var att=itemAttune(it),info=itemInfo(it.name,it.source),full=itemEntriesFull(it),hasDesc=full.length;
       var meta=it.cat+(it.rarity&&it.rarity!=="none"?" · "+it.rarity:"")+(it.dmg?" · "+it.dmg+" "+dmgAbbr(it.dmgType):"")+(it.ac&&it.armorKind!=="shield"?" · AC "+it.ac:"")+(it.armorKind==="shield"?" · +"+(it.ac||2)+" AC":"")+(att?" · "+attuneNote(att):"");
       var ctrl='<input type="number" min="1" class="inv-qty" data-i="'+i+'" value="'+(it.qty||1)+'">';
       var ra2=resolveArmor(it),equippable=ra2||it.cat==="Weapon";
@@ -1413,7 +1425,7 @@
         ctrl+='<button class="equip-btn'+(it.equipped?" on":"")+'" data-i="'+i+'">'+lbl+"</button>";
       }
       ctrl+='<button class="rm-btn" data-i="'+i+'" title="Remove">×</button>';
-      var desc=hasDesc?'<div class="inv-desc">'+info.entries.map(renderEntry).join("")+"</div>":"";
+      var desc=hasDesc?'<div class="inv-desc">'+full.map(renderEntry).join("")+"</div>":"";
       html+='<div class="inv-item'+(hasDesc?" has-desc":"")+'"><div class="inv-row"><div class="inv-main" data-i="'+i+'"><div class="nm">'+esc(it.name)+rarBadge(it.rarity)+(it.generic?' <span class="meta">(no stats)</span>':"")+(hasDesc?' <span class="inv-chev">&#9662;</span>':"")+'</div><div class="meta">'+esc(meta)+(it.source?" · "+srcTag(it.source):"")+'</div></div><div class="ctrl">'+ctrl+"</div></div>"+desc+"</div>";
     });
     $("inventoryPanel").innerHTML=html;
@@ -1645,6 +1657,35 @@
     });
     return h;
   }
+  /* ---------- advantage / disadvantage on skills ----------
+     A stealth penalty from worn armour is unconditional; feature-based advantage is
+     usually situational, so it is flagged and the tooltip names the feature. */
+  function skillAdvantage(){
+    var out={};
+    function note(sk,kind,from,cond){
+      if(!out[sk])out[sk]={adv:[],dis:[]};
+      var txt=from+(cond?" (situational)":"");
+      if(out[sk][kind].indexOf(txt)<0)out[sk][kind].push(txt);
+    }
+    state.equipment.inventory.forEach(function(i){
+      if(!i.equipped)return;
+      var a=resolveArmor(i);if(!a)return;
+      var info=itemInfo(i.name,i.source)||i;
+      if(info.stealthDis)note("Stealth","dis",(info.name||i.name),false);
+    });
+    featuresAndTraits().forEach(function(f){
+      var txt=plainTags(entryText(f.entries||""));
+      var re=/(advantage|disadvantage) on ([^.]{0,90})/gi,m;
+      while((m=re.exec(txt))){
+        var kind=m[1].toLowerCase()==="advantage"?"adv":"dis",seg=m[2];
+        if(/saving throw/i.test(seg))continue;                    // shown in Defences instead
+        for(var s in SKILL_ABILITY){
+          if(seg.toLowerCase().indexOf(s.toLowerCase())>=0)note(s,kind,f.name,true);
+        }
+      }
+    });
+    return out;
+  }
   function skillBonus(sk){
     var ps=proficientSkills(),ex=expertiseSkills(),p=0;
     if(ps[sk])p=(ex[sk]?profBonus()*2:profBonus());
@@ -1734,6 +1775,14 @@
     var label=(lin&&lin.speed)?lin.name:(race?race.name:"Base");
     var parts=[[label,base]],total=base,notes=[],w=wornArmor(),seen={};
     var prog=(window.CC_SPEEDPROG&&window.CC_SPEEDPROG[state.slug])||null;
+    state.equipment.inventory.forEach(function(i){          // armour you lack the Strength for
+      if(!i.equipped)return;
+      var a=resolveArmor(i);if(!a)return;
+      var info=itemInfo(i.name,i.source)||i;
+      if(info.strReq&&totalScore("Strength")<info.strReq){
+        parts.push([(info.name||i.name)+" (needs Str "+info.strReq+")",-10]);total-=10;
+      }
+    });
     featuresAndTraits().forEach(function(f){
       var cfg=PASSIVE_SPEED[f.name];
       var txt=entryText(f.entries||"");
@@ -2036,8 +2085,8 @@
     var full=(window.CC_ITEMS||[]).filter(function(it){return itemAllowed(it)&&it.name.toLowerCase().indexOf(q)>=0;});
     var list=full.slice(0,150);
     var html=list.length?list.map(function(it){
-      var hasDesc=it.entries&&it.entries.length;
-      var desc=hasDesc?'<div class="inv-desc">'+it.entries.map(renderEntry).join("")+"</div>":"";
+      var full=itemEntriesFull(it),hasDesc=full.length;
+      var desc=hasDesc?'<div class="inv-desc">'+full.map(renderEntry).join("")+"</div>":"";
       return '<div class="inv-res-item"><div class="inv-res-row"><span class="res-name-click">'+esc(it.name)+(hasDesc?' <span class="inv-chev">&#9662;</span>':"")+' <span class="meta">'+esc(it.cat+(it.rarity&&it.rarity!=="none"?" · "+it.rarity:""))+" · "+srcTag(it.source)+'</span></span><button class="add sh-additem" data-name="'+esc(it.name)+'" data-source="'+esc(it.source)+'">ADD</button></div>'+desc+"</div>";
     }).join(""):'<div class="results-note">No matches.</div>';
     if(full.length>list.length)html+='<div class="results-note">Showing '+list.length+' of '+full.length+' — refine your search.</div>';
@@ -2103,10 +2152,13 @@
 
     // MIDDLE: skills + passives
     var ps=proficientSkills();
-    var ex=expertiseSkills();
+    var ex=expertiseSkills(),advDis=skillAdvantage();
     var skillRows=Object.keys(SKILL_ABILITY).sort().map(function(sk){
       var ab=SKILL_ABILITY[sk];
-      return '<div class="line-row"><span class="dot'+(ps[sk]?" on":"")+(ex[sk]?" exp":"")+'"'+(ex[sk]?' title="Expertise — proficiency doubled"':"")+'></span><span class="ab">'+ABIL_ABBR[ab]+'</span><span>'+sk+(ex[sk]?' <span class="exp-tag">EX</span>':"")+'</span><span class="lv">'+modStr(skillBonus(sk))+"</span></div>";
+      var ad=advDis[sk],mk="";
+      if(ad&&ad.adv.length)mk+=' <span class="adv-tag" title="'+esc("Advantage: "+ad.adv.join("; "))+'">A</span>';
+      if(ad&&ad.dis.length)mk+=' <span class="dis-tag" title="'+esc("Disadvantage: "+ad.dis.join("; "))+'">D</span>';
+      return '<div class="line-row"><span class="dot'+(ps[sk]?" on":"")+(ex[sk]?" exp":"")+'"'+(ex[sk]?' title="Expertise — proficiency doubled"':"")+'></span><span class="ab">'+ABIL_ABBR[ab]+'</span><span>'+sk+(ex[sk]?' <span class="exp-tag">EX</span>':"")+mk+'</span><span class="lv">'+modStr(skillBonus(sk))+"</span></div>";
     }).join("");
     function passive(sk){return passiveScore(sk);}
     var passBody='<div class="passive-row"><span>Passive Perception</span><b>'+passive("Perception")+'</b></div><div class="passive-row"><span>Passive Investigation</span><b>'+passive("Investigation")+'</b></div><div class="passive-row"><span>Passive Insight</span><b>'+passive("Insight")+"</b></div>";
@@ -2155,7 +2207,7 @@
       invBody+=inv.map(function(it,i){
         var att=itemAttune(it);
         var badge=(att&&it.attuned)?' <span class="attune-star">&#10022; attuned</span>':"";
-        var info=itemInfo(it.name,it.source),hasDesc=info&&info.entries&&info.entries.length;
+        var info=itemInfo(it.name,it.source),full=itemEntriesFull(it),hasDesc=full.length;
         var meta=it.cat+(it.dmg?" · "+it.dmg+" "+(it.dmgType||""):"")+(it.ac&&it.armorKind!=="shield"?" · AC "+it.ac:"")+(it.armorKind==="shield"?" · +"+(it.ac||2)+" AC":"")+(it.rarity&&it.rarity!=="none"?" · "+it.rarity:"")+(att?" · "+attuneNote(att):"");
         var qb=(it.qty>1?'<span class="qty-badge">&times;'+it.qty+"</span> ":"");
         var ctrl='<input type="number" min="1" class="sh-qty" data-i="'+i+'" title="Quantity" value="'+(it.qty||1)+'">';
@@ -2163,7 +2215,7 @@
         if(ra||it.cat==="Weapon"){var lbl=ra?(it.equipped?"Worn":"Wear"):(it.equipped?"Wielding":"Wield");ctrl+='<button class="equip-btn sh-equip'+(it.equipped?" on":"")+'" data-i="'+i+'">'+lbl+"</button>";}
         if(att)ctrl+='<button class="equip-btn sh-attune'+(it.attuned?" on":"")+'" data-i="'+i+'" title="'+esc(attuneNote(att))+'">'+(it.attuned?"Attuned":"Attune")+"</button>";
         ctrl+='<button class="rm-btn sh-rm" data-i="'+i+'">&times;</button>';
-        var desc=hasDesc?'<div class="inv-desc">'+info.entries.map(renderEntry).join("")+"</div>":"";
+        var desc=hasDesc?'<div class="inv-desc">'+full.map(renderEntry).join("")+"</div>":"";
         // magic weapon variants (Frost Brand, +1 Weapon, ...) need a base weapon to become an attack
         var basePick="";
         if(isVariantWeapon(it)){
