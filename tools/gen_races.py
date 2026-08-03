@@ -153,6 +153,8 @@ def base_obj(r):
       "ability":parse_ability(r.get("ability")),
       "resist":[tcase(x) for x in (r.get("resist") or []) if isinstance(x,str)],
       "immune":[tcase(x) for x in (r.get("immune") or []) if isinstance(x,str)],
+      "condImmune":[tcase(x) for x in (r.get("conditionImmune") or []) if isinstance(x,str)],
+      "vulnerable":[tcase(x) for x in (r.get("vulnerable") or []) if isinstance(x,str)],
       "languages":langs,
       "skills":parse_skills(r.get("skillProficiencies")),
       "weapons":prof_text(r.get("weaponProficiencies")),

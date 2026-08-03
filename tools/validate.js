@@ -53,7 +53,8 @@ app=app.replace("populateLevels();showEdition();",
  "needsCustomAsi:needsCustomAsi,currentRace:currentRace,currentLineage:currentLineage,"+
  "featAsiPicks:featAsiPicks,featAsiPending:featAsiPending,asiResolved:asiResolved,"+
  "featureAttacks:featureAttacks,featureSkillChoice:featureSkillChoice,featureSkillPicks:featureSkillPicks,"+
- "featuresAndTraits:featuresAndTraits,condNotesFor:condNotesFor,officialLanguages:officialLanguages,languagesAll:languagesAll,mergedLanguages:mergedLanguages};");
+ "featuresAndTraits:featuresAndTraits,condNotesFor:condNotesFor,officialLanguages:officialLanguages,languagesAll:languagesAll,mergedLanguages:mergedLanguages,"+
+ "defences:defences,expertiseSkills:expertiseSkills,skillBonus:skillBonus,passiveScore:passiveScore};");
 eval(app);
 var C=window.__cc,S=C.state;
 
@@ -482,6 +483,41 @@ S.raceLineage="Sea (MTF)";
 var sm=C.mergedLanguages(C.currentRace(),C.currentLineage(C.currentRace()));
 checkTrue("  Sea Elf gains Aquan",sm.fixed.indexOf("Aquan")>=0);
 
+
+
+// =====================================================================
+section("7k. Expertise and defences");
+setup("rogue-classic","Rogue",6);          // prof +3; Wis 10 (+0), Dex 14 (+2)
+S.choices["skill:0"]="Insight";S.choices["skill:1"]="Stealth";
+check("  Insight with proficiency only",C.skillBonus("Insight"),3);
+S.choices["expertise:1:0"]="Insight";
+check("  Insight with Expertise doubles the bonus",C.skillBonus("Insight"),6);
+check("  Stealth is unaffected",C.skillBonus("Stealth"),5);
+check("  a non-proficient skill gets no bonus",C.skillBonus("Arcana"),1);
+// expertise must not apply to a skill you are not proficient in
+S.choices["expertise:1:1"]="Medicine";
+check("  expertise on a non-proficient skill adds nothing",C.skillBonus("Medicine"),0);
+// passives follow expertise
+setup("rogue-classic","Rogue",6);
+S.choices["skill:0"]="Perception";
+check("  passive Perception with proficiency",C.passiveScore("Perception"),13);
+S.choices["expertise:1:0"]="Perception";
+check("  ...and with Expertise",C.passiveScore("Perception"),16);
+// bards get it too, at their own levels
+setup("bard-classic","Bard",3);
+S.choices["skill:0"]="Persuasion";
+S.choices["expertise:3:0"]="Persuasion";
+check("  Bard 3 Expertise on Persuasion",C.skillBonus("Persuasion"),2*2-1+0);   // Cha 8 (-1) + 2*prof(2)
+// defences: species resistances and parsed advantages
+setup("sorcerer-classic","Sorcerer",6);
+S.race={name:"Elf",source:"PHB"};S.raceLineage=null;
+var dfn=C.defences();
+checkTrue("  Elf: advantage against being charmed",(function(){for(var i=0;i<dfn.adv.length;i++)if(/charmed/i.test(dfn.adv[i].text))return true;return false;})());
+checkTrue("  Elf: magic cannot put it to sleep",(function(){for(var i=0;i<dfn.adv.length;i++)if(/sleep/i.test(dfn.adv[i].text))return true;return false;})());
+checkTrue("  no raw 5etools tags leak through",(function(){for(var i=0;i<dfn.adv.length;i++)if(dfn.adv[i].text.indexOf("{@")>=0)return false;return true;})());
+S.race={name:"Aasimar",source:"MPMM"};
+var dfn2=C.defences();
+checkTrue("  Aasimar resists necrotic and radiant",dfn2.resist.length>=2);
 
 // =====================================================================
 section("8. Data integrity");

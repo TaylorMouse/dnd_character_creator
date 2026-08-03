@@ -586,6 +586,7 @@
         body=(f.entries||[]).map(renderEntry).join("");
         var fsk=featureSkillHtml(f);
         if(fsk.count){body+=fsk.html;choicesN=fsk.count;if(fsk.pending)pending=true;}
+        if(f.name==="Expertise"){var exh=expertiseHtml(f);body+=exh.html;if(exh.count){choicesN=exh.count;if(exh.pending)pending=true;}}
         if(f.isSub){
           var tc=tableChoiceCfg(fd.name,chosen&&chosen.shortName,f.name);
           if(tc){var res=tableChoiceHtml(f,tc);body+=res.html;choicesN=res.choicesN;pending=res.pending;}
@@ -631,6 +632,10 @@
         if(cb.checked)delete state.choices[k];else state.choices[k]="1";
         render();
       });
+    });
+    Array.prototype.forEach.call($("featureList").querySelectorAll(".exp-sel"),function(sel){
+      sel.addEventListener("click",function(e){e.stopPropagation();});
+      sel.addEventListener("change",function(e){state.choices[sel.getAttribute("data-key")]=e.target.value||"";render();});
     });
     Array.prototype.forEach.call($("featureList").querySelectorAll(".feat-skill"),function(sel){
       sel.addEventListener("click",function(e){e.stopPropagation();});
@@ -1574,6 +1579,96 @@
       if(race.skills.any)for(var i=0;i<race.skills.any;i++)add(state.raceChoices["race:skillany:"+i]);}
     return set;
   }
+  /* ---------- expertise ----------
+     Rogue and Bard (and 2024 Ranger, Expert sidekick) double their proficiency bonus on
+     chosen skills. Each Expertise feature grants two picks, taken from skills you are
+     already proficient in. */
+  function expertiseFeatures(){
+    var out=[],fd=state.fdata;
+    if(!fd)return out;
+    (fd.classFeatures||[]).forEach(function(f){
+      if(f.level<=state.level&&f.name==="Expertise"&&optEnabled(f))out.push(f);
+    });
+    return out;
+  }
+  var EXPERTISE_PICKS=2;
+  function expertiseSkills(){
+    var set={};
+    expertiseFeatures().forEach(function(f){
+      for(var i=0;i<EXPERTISE_PICKS;i++){
+        var v=state.choices["expertise:"+f.level+":"+i];
+        if(v)set[v]=1;
+      }
+    });
+    return set;
+  }
+  /* ---------- defences ----------
+     Damage resistances come from the species data; "advantage on saving throws against X"
+     and sleep immunity live in feature text, so they are read from there. */
+  function defences(){
+    var race=currentRace(),lin=race?currentLineage(race):null;
+    function u(a,b){var o=(a||[]).slice();(b||[]).forEach(function(x){if(o.indexOf(x)<0)o.push(x);});return o;}
+    var out={resist:[],immune:[],vulnerable:[],condImmune:[],adv:[]};
+    if(race){out.resist=u(out.resist,race.resist);out.immune=u(out.immune,race.immune);
+             out.vulnerable=u(out.vulnerable,race.vulnerable);out.condImmune=u(out.condImmune,race.condImmune);}
+    if(lin){out.resist=u(out.resist,lin.resist);out.immune=u(out.immune,lin.immune);
+            out.vulnerable=u(out.vulnerable,lin.vulnerable);out.condImmune=u(out.condImmune,lin.condImmune);}
+    var seen={};
+    featuresAndTraits().forEach(function(f){
+      var txt=entryText(f.entries||"");
+      var re=/advantage on (?:all )?saving throws against ([^.;]{3,80})/gi,m;
+      while((m=re.exec(txt))){
+        var s=plainTags(m[1]);                     // resolve {@condition ...} etc.
+        s=s.split(/,? and /)[0];                   // stop before a second, unrelated clause
+        s=s.replace(/\s+/g," ").replace(/[,;]\s*$/,"").trim();
+        if(s&&!seen[s.toLowerCase()]){seen[s.toLowerCase()]=1;out.adv.push({text:"Advantage on saves against "+s,from:f.name});}
+      }
+      if(/magic can'?t put you to sleep/i.test(txt)&&!seen.sleep){
+        seen.sleep=1;out.adv.push({text:"Magic can't put you to sleep",from:f.name});
+      }
+      if(/immune to (?:the )?([a-z ]{3,30}) condition/i.test(txt)){
+        var c=/immune to (?:the )?([a-z ]{3,30}) condition/i.exec(txt)[1].trim();
+        if(!seen["c"+c]){seen["c"+c]=1;out.condImmune.push(capital(c));}
+      }
+    });
+    return out;
+  }
+  function defencesHtml(){
+    var d=defences(),h="";
+    function line(l,v){return v.length?'<p class="prof-line"><b>'+l+':</b> '+esc(v.join(", "))+"</p>":"";}
+    h+=line("Damage Resistances",d.resist);
+    h+=line("Damage Immunities",d.immune);
+    h+=line("Damage Vulnerabilities",d.vulnerable);
+    h+=line("Condition Immunities",d.condImmune);
+    d.adv.forEach(function(a){
+      h+='<p class="prof-line def-adv" title="'+esc(a.from)+'"><span class="def-mark">●</span> '+esc(a.text)+"</p>";
+    });
+    return h;
+  }
+  function skillBonus(sk){
+    var ps=proficientSkills(),ex=expertiseSkills(),p=0;
+    if(ps[sk])p=(ex[sk]?profBonus()*2:profBonus());
+    return abMod(totalScore(SKILL_ABILITY[sk]))+p;
+  }
+  function passiveScore(sk){return 10+skillBonus(sk);}
+  function expertiseHtml(f){
+    var ps=proficientSkills(),pool=[];
+    for(var s in ps)pool.push(s);
+    pool.sort();
+    var picked=0,html='<div class="origin-picker"><label>Expertise — double proficiency on two skills</label>';
+    if(!pool.length)return {html:'<div class="choice-desc tag-note">Choose your skill proficiencies first, then pick which two gain Expertise.</div>',count:0,pending:false};
+    for(var i=0;i<EXPERTISE_PICKS;i++){
+      var key="expertise:"+f.level+":"+i,cur=state.choices[key]||"";
+      if(cur)picked++;
+      var others=[];
+      for(var j=0;j<EXPERTISE_PICKS;j++){if(j!==i){var v=state.choices["expertise:"+f.level+":"+j];if(v)others.push(v);}}
+      html+='<select class="exp-sel" data-key="'+esc(key)+'"><option value="">— Choose a proficient skill —</option>'+
+        pool.map(function(s){
+          return '<option value="'+esc(s)+'"'+(others.indexOf(s)>=0?" disabled":"")+(cur===s?" selected":"")+">"+esc(s)+"</option>";
+        }).join("")+"</select>";
+    }
+    return {html:html+"</div>",count:EXPERTISE_PICKS,pending:picked<EXPERTISE_PICKS};
+  }
   function savingProfs(){
     var set={},fd=state.fdata,st=fd&&fd.proficiencies&&fd.proficiencies.savingThrows;
     if(st&&st!=="None")st.split(",").forEach(function(s){set[s.trim()]=1;});
@@ -1963,6 +2058,7 @@
     // current HP tracks max until the player explicitly edits it
     if(!state.sheet.hpEdited)state.sheet.hpCurrent=mhp;
     var sub=((race?race.name+(lin?" ("+lin.name+")":""):"")+" "+state.className+" "+state.level).trim();
+    if(state.subclassName)sub+="  ·  "+state.subclassName;
 
     var html='<div class="sheet-head"><div class="sheet-portrait" id="sheetPortrait">'+(state.portrait?'<img src="'+state.portrait+'">':"&#9670;")+'</div><div><div class="sheet-name">'+esc(state.name||"Unnamed")+'</div><div class="sheet-sub">'+esc(sub)+"</div></div>"+
       '<div class="sheet-top">'+topStat("+"+prof,"Prof Bonus",profWhy())+topStat(esc(speedText()),"Speed",speedWhy())+topStat(modStr(init),"Initiative",initWhy())+acStatHtml(ac)+
@@ -2007,10 +2103,14 @@
 
     // MIDDLE: skills + passives
     var ps=proficientSkills();
-    var skillRows=Object.keys(SKILL_ABILITY).sort().map(function(sk){var ab=SKILL_ABILITY[sk],m=abMod(totalScore(ab))+(ps[sk]?prof:0);return '<div class="line-row"><span class="dot'+(ps[sk]?" on":"")+'"></span><span class="ab">'+ABIL_ABBR[ab]+'</span><span>'+sk+'</span><span class="lv">'+modStr(m)+"</span></div>";}).join("");
-    function passive(sk){return 10+abMod(totalScore(SKILL_ABILITY[sk]))+(ps[sk]?prof:0);}
+    var ex=expertiseSkills();
+    var skillRows=Object.keys(SKILL_ABILITY).sort().map(function(sk){
+      var ab=SKILL_ABILITY[sk];
+      return '<div class="line-row"><span class="dot'+(ps[sk]?" on":"")+(ex[sk]?" exp":"")+'"'+(ex[sk]?' title="Expertise — proficiency doubled"':"")+'></span><span class="ab">'+ABIL_ABBR[ab]+'</span><span>'+sk+(ex[sk]?' <span class="exp-tag">EX</span>':"")+'</span><span class="lv">'+modStr(skillBonus(sk))+"</span></div>";
+    }).join("");
+    function passive(sk){return passiveScore(sk);}
     var passBody='<div class="passive-row"><span>Passive Perception</span><b>'+passive("Perception")+'</b></div><div class="passive-row"><span>Passive Investigation</span><b>'+passive("Investigation")+'</b></div><div class="passive-row"><span>Passive Insight</span><b>'+passive("Insight")+"</b></div>";
-    var mid=shCard("Skills",skillRows)+shCard("Passive Senses",passBody);
+    var mid=shCard("Skills",skillRows)+shCard("Passive Senses",passBody)+shCard("Defences",defencesHtml());
 
     // RIGHT: resources, attacks, spells, inventory, features, background
     var res=(window.CC_RESOURCES&&window.CC_RESOURCES[state.slug])||[];
@@ -2318,8 +2418,8 @@
     var sp=savingProfs();
     ABILITIES.forEach(function(a){setT(F.saveFields[a],modStr(abMod(totalScore(a))+(sp[a]?prof:0)));if(sp[a])check(F.saveChecks[a]);});
     var ps=proficientSkills();
-    for(var sk in F.skillFields){var ab=SKILL_ABILITY[sk];setT(F.skillFields[sk],modStr(abMod(totalScore(ab))+(ps[sk]?prof:0)));if(ps[sk])check(F.skillChecks[sk]);}
-    setT("Passive",10+abMod(totalScore("Wisdom"))+(ps["Perception"]?prof:0));
+    for(var sk in F.skillFields){setT(F.skillFields[sk],modStr(skillBonus(sk)));if(ps[sk])check(F.skillChecks[sk]);}
+    setT("Passive",passiveScore("Perception"));
     setT("ProfBonus","+"+prof);setT("AC",computeAC());setT("Initiative",modStr(abMod(totalScore("Dexterity"))));
     setT("Speed",speedText());
     var mhp=maxHP();setT("HPMax",mhp);setT("HPCurrent",state.sheet.hpEdited?state.sheet.hpCurrent:mhp);setT("HPTemp",state.sheet.hpTemp);
