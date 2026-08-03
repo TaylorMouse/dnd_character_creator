@@ -50,7 +50,8 @@ app=app.replace("populateLevels();showEdition();",
  "proficientSkills:proficientSkills,savingProfs:savingProfs,computeAC:computeAC,"+
  "actionEconomy:actionEconomy,classSpellList:classSpellList,SKILL_ABILITY:SKILL_ABILITY,"+
  "ABILITIES:ABILITIES,maxSpellLevel:maxSpellLevel,speedInfo:speedInfo,"+
- "needsCustomAsi:needsCustomAsi,currentRace:currentRace,currentLineage:currentLineage};");
+ "needsCustomAsi:needsCustomAsi,currentRace:currentRace,currentLineage:currentLineage,"+
+ "featAsiPicks:featAsiPicks,featAsiPending:featAsiPending,asiResolved:asiResolved};");
 eval(app);
 var C=window.__cc,S=C.state;
 
@@ -302,6 +303,35 @@ checkTrue("  ...and offers no allocator",!C.needsCustomAsi(C.currentRace(),null)
 setup("barbarian-one","Barbarian",6);
 S.race={name:"Dwarf",source:"XPHB"};S.raceLineage=null;
 checkTrue("  2024 species offers no allocator",!C.needsCustomAsi(C.currentRace(),null));
+
+
+// =====================================================================
+section("7e. Feats that grant ability increases (half-feats)");
+setup("fighter-classic","Fighter",6);          // Str15 Dex14 Con13 Int12 Wis10 Cha8
+S.choices["asi:4:mode"]="feat";
+S.choices["asi:4:feat"]="Slasher";
+checkTrue("  Slasher is pending until an ability is picked",C.featAsiPending(4));
+checkTrue("  ...so the ASI is not yet complete",!C.asiResolved(4));
+check("  Dex before",C.totalScore("Dexterity"),14);
+S.choices["asi:4:featab0"]="Dexterity";
+check("  Dex after Slasher +1",C.totalScore("Dexterity"),15);
+checkTrue("  ...and now the ASI is complete",C.asiResolved(4));
+S.choices["asi:4:feat"]="Actor";delete S.choices["asi:4:featab0"];
+check("  Actor grants a fixed Cha +1",C.totalScore("Charisma"),9);
+checkTrue("  ...with nothing left to choose",!C.featAsiPending(4));
+S.choices["asi:4:feat"]="Alert";
+check("  a feat with no increase adds nothing",C.featAsiPicks(4).length,0);
+checkTrue("  ...and does not block the ASI",C.asiResolved(4));
+// every feat that declares an increase must expose a usable shape
+var withAb=0,broken=0,FL=window.CC_FEATS;
+for(var fi2=0;fi2<FL.length;fi2++){
+  var ab=FL[fi2].ability;if(!ab)continue;withAb++;
+  var okFixed=false,k2;for(k2 in ab.fixed)okFixed=true;
+  var okChoose=ab.choose&&ab.choose.from&&ab.choose.from.length>0;
+  if(!okFixed&&!okChoose)broken++;
+}
+checkTrue("  feats declaring an increase are plentiful",withAb>150);
+check("  none have an unusable ability shape",broken,0);
 
 // =====================================================================
 section("8. Data integrity");

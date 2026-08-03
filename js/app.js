@@ -340,10 +340,57 @@
     return head+body+"</div>";
   }
 
+  function featByName(nm){
+    if(!nm)return null;
+    var L=window.CC_FEATS||[];
+    for(var i=0;i<L.length;i++)if(L[i].name===nm&&L[i].edition===state.edition)return L[i];
+    for(var j=0;j<L.length;j++)if(L[j].name===nm)return L[j];
+    return null;
+  }
+  // ability increases granted by the feat taken at an ASI level
+  function featAsiPicks(level){
+    var ft=featByName(state.choices["asi:"+level+":feat"]);
+    if(!ft||!ft.ability)return [];
+    var out=[],k;
+    for(k in ft.ability.fixed)out.push({ability:k,amount:ft.ability.fixed[k],from:ft.name});
+    var ch=ft.ability.choose;
+    if(ch)for(var i=0;i<ch.count;i++){
+      var a=state.choices["asi:"+level+":featab"+i];
+      if(a)out.push({ability:a,amount:ch.amount,from:ft.name});
+    }
+    return out;
+  }
+  function featAsiPending(level){
+    var ft=featByName(state.choices["asi:"+level+":feat"]);
+    if(!ft||!ft.ability||!ft.ability.choose)return false;
+    for(var i=0;i<ft.ability.choose.count;i++)if(!state.choices["asi:"+level+":featab"+i])return true;
+    return false;
+  }
+  function featAsiHtml(level){
+    var ft=featByName(state.choices["asi:"+level+":feat"]);
+    if(!ft||!ft.ability)return "";
+    var html="",k,fixedTxt=[];
+    for(k in ft.ability.fixed)fixedTxt.push(k+" +"+ft.ability.fixed[k]);
+    if(fixedTxt.length)html+='<div class="choice-desc">Grants '+esc(fixedTxt.join(", "))+".</div>";
+    var ch=ft.ability.choose;
+    if(ch){
+      for(var i=0;i<ch.count;i++){
+        var cur=state.choices["asi:"+level+":featab"+i]||"",others=[];
+        for(var j=0;j<ch.count;j++){if(j!==i){var v=state.choices["asi:"+level+":featab"+j];if(v)others.push(v);}}
+        html+='<div class="asi-row"><select class="asi-featab" data-level="'+level+'" data-idx="'+i+'">'+
+          '<option value="">— '+esc(ft.name)+": +"+ch.amount+' to which ability? —</option>'+
+          ch.from.map(function(a){
+            return '<option value="'+a+'"'+(others.indexOf(a)>=0?" disabled":"")+(cur===a?" selected":"")+">"+a+" +"+ch.amount+"</option>";
+          }).join("")+"</select></div>";
+      }
+      if(ft.ability.max)html+='<div class="choice-desc tag-note">This can raise the score to a maximum of '+ft.ability.max+".</div>";
+    }
+    return html;
+  }
   function asiResolved(level){
     var mode=state.choices["asi:"+level+":mode"];
     if(!mode)return false;
-    if(mode==="feat")return !!state.choices["asi:"+level+":feat"];
+    if(mode==="feat")return !!state.choices["asi:"+level+":feat"]&&!featAsiPending(level);
     var dist=state.choices["asi:"+level+":dist"]||"2",n=dist==="11"?2:1;
     for(var i=0;i<n;i++){if(!state.choices["asi:"+level+":a"+i])return false;}
     return true;
@@ -382,6 +429,7 @@
         }).join("")+"</select>";
       if(chosen){
         var ft=feats.filter(function(x){return x.name===chosen;})[0];
+        html+=featAsiHtml(level);
         if(ft)html+='<div class="choice-desc">'+(ft.prereq?"<p class='tag-note'>Prerequisite (not enforced yet): "+esc(ft.prereq)+"</p>":"")+(ft.entries||[]).map(renderEntry).join("")+"</div>";
       }
     }
@@ -516,7 +564,14 @@
     });
     Array.prototype.forEach.call($("featureList").querySelectorAll(".asi-feat"),function(sel){
       sel.addEventListener("click",function(e){e.stopPropagation();});
-      sel.addEventListener("change",function(e){state.choices["asi:"+sel.getAttribute("data-level")+":feat"]=e.target.value||"";render();});
+      sel.addEventListener("change",function(e){var lv=sel.getAttribute("data-level");state.choices["asi:"+lv+":feat"]=e.target.value||"";for(var q=0;q<4;q++)delete state.choices["asi:"+lv+":featab"+q];render();});
+    });
+    Array.prototype.forEach.call($("featureList").querySelectorAll(".asi-featab"),function(sel){
+      sel.addEventListener("click",function(e){e.stopPropagation();});
+      sel.addEventListener("change",function(e){
+        state.choices["asi:"+sel.getAttribute("data-level")+":featab"+sel.getAttribute("data-idx")]=e.target.value||"";
+        render();
+      });
     });
     Array.prototype.forEach.call($("featureList").querySelectorAll(".asi-dist"),function(sel){
       sel.addEventListener("click",function(e){e.stopPropagation();});
@@ -874,6 +929,12 @@
         var dist=state.choices["asi:"+f.level+":dist"]||"2";
         if(dist==="2"){var a=state.choices["asi:"+f.level+":a0"];if(a)add(a,"ASI (level "+f.level+")",2);}
         else{var a0=state.choices["asi:"+f.level+":a0"],a1=state.choices["asi:"+f.level+":a1"];if(a0)add(a0,"ASI (level "+f.level+")",1);if(a1)add(a1,"ASI (level "+f.level+")",1);}
+      });
+      // half-feats (Slasher, Resilient, Actor, ...) grant their own increases
+      state.fdata.classFeatures.forEach(function(f){
+        if(f.name!=="Ability Score Improvement"||f.level>state.level)return;
+        if(state.choices["asi:"+f.level+":mode"]!=="feat")return;
+        featAsiPicks(f.level).forEach(function(p){add(p.ability,p.from+" (level "+f.level+")",p.amount);});
       });
     }
     return map;
@@ -1544,7 +1605,12 @@
     var fd=state.fdata,name=f.name,L=f.level,i;
     if(name==="Ability Score Improvement"){
       var mode=state.choices["asi:"+L+":mode"];
-      if(mode==="feat"){var ft=state.choices["asi:"+L+":feat"];return ft?"Feat — "+ft:"Feat (not chosen yet)";}
+      if(mode==="feat"){
+        var ftn=state.choices["asi:"+L+":feat"];
+        if(!ftn)return "Feat (not chosen yet)";
+        var picks=featAsiPicks(L),extra=picks.map(function(p){return p.ability+" +"+p.amount;});
+        return "Feat — "+ftn+(extra.length?" ("+extra.join(", ")+")":(featAsiPending(L)?" (ability increase not chosen)":""));
+      }
       if(mode==="asi"){var dist=state.choices["asi:"+L+":dist"]||"2",n=dist==="11"?2:1,amt=dist==="11"?1:2,parts=[];for(i=0;i<n;i++){var a=state.choices["asi:"+L+":a"+i];if(a)parts.push(a+" +"+amt);}return parts.length?parts.join(", "):"Ability increase (not chosen yet)";}
       return "Not chosen yet";
     }

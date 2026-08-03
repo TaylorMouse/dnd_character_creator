@@ -36,14 +36,33 @@ def prereq_text(prs):
         if seg: parts.append(", ".join(seg))
     return " OR ".join(parts)
 
+def parse_ability(arr):
+    """Ability increases a feat grants: fixed values and/or a choice from a list."""
+    fixed, choose, cap = {}, None, None
+    for blk in arr or []:
+        if not isinstance(blk, dict): continue
+        for k, v in blk.items():
+            if k == "choose" and isinstance(v, dict):
+                choose = {"from": [ABIL.get(x, x) for x in v.get("from", [])],
+                          "count": v.get("count", 1), "amount": v.get("amount", 1)}
+            elif k == "max":
+                cap = v
+            elif k in ABIL and isinstance(v, int):
+                fixed[ABIL[k]] = v
+    if not fixed and not choose: return None
+    return {"fixed": fixed, "choose": choose, "max": cap}
+
 d = json.load(open(os.path.join(_DATA_ROOT, "feats.json"), encoding="utf-8"))
 out = []
 for f in d["feat"]:
     ed = "one" if f["source"] == "XPHB" else "classic"
-    out.append({"name": f["name"], "source": f["source"], "edition": ed,
-                "category": CAT.get(f.get("category"), f.get("category") or "General"),
-                "prereq": prereq_text(f.get("prerequisite")),
-                "entries": f.get("entries", [])})
+    o = {"name": f["name"], "source": f["source"], "edition": ed,
+         "category": CAT.get(f.get("category"), f.get("category") or "General"),
+         "prereq": prereq_text(f.get("prerequisite")),
+         "entries": f.get("entries", [])}
+    ab = parse_ability(f.get("ability"))
+    if ab: o["ability"] = ab
+    out.append(o)
 out.sort(key=lambda x: x["name"])
 io.open(OUT, "w", encoding="utf-8").write(
     "// Auto-generated from 5etools feats.json\nwindow.CC_FEATS = "
