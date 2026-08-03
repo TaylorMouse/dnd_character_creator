@@ -15,6 +15,7 @@
   var state=freshCharacter();
   // Wipe every character field in place (keeping the same state object) and reset the form controls.
   function resetCharacter(){
+    charFileHandle=null;                    // a new character is not tied to a file
     var f=freshCharacter(),k;
     for(k in state)if(state.hasOwnProperty(k))delete state[k];
     for(k in f)state[k]=f[k];
@@ -2204,21 +2205,72 @@
     rd.readAsDataURL(file);
   }
   function serializeChar(){var o={_app:"dnd-cc",_v:1};SAVE_KEYS.forEach(function(k){o[k]=state[k];});return o;}
+  function toast(msg){
+    var el=$("toast");
+    if(!el){el=document.createElement("div");el.id="toast";el.className="toast";document.body.appendChild(el);}
+    el.textContent=msg;el.className="toast show";
+    if(window._toastT)clearTimeout(window._toastT);
+    window._toastT=setTimeout(function(){el.className="toast";},2200);
+  }
   function downloadBlob(data,filename,mime){
     var blob=new Blob([data],{type:mime}),url=URL.createObjectURL(blob),a=document.createElement("a");
     a.href=url;a.download=filename;document.body.appendChild(a);a.click();
     setTimeout(function(){URL.revokeObjectURL(url);if(a.parentNode)a.parentNode.removeChild(a);},150);
   }
-  function saveChar(){
+  /* ---------- saving ----------
+     When the browser supports the File System Access API we keep a handle to the file
+     that was opened (or first saved to), so later saves overwrite it in place instead of
+     dropping another copy in Downloads. "Save as..." always asks for a location. */
+  var charFileHandle=null;
+  function canFilePicker(){return !!(window.showOpenFilePicker&&window.showSaveFilePicker);}
+  function charFileName(){return (state.name||"character").replace(/[^\w \-]/g,"")+".json";}
+  function grantWrite(h){
+    if(!h.queryPermission)return Promise.resolve(true);
+    return h.queryPermission({mode:"readwrite"}).then(function(p){
+      if(p==="granted")return true;
+      if(!h.requestPermission)return false;
+      return h.requestPermission({mode:"readwrite"}).then(function(p2){return p2==="granted";});
+    });
+  }
+  function writeHandle(h,text){
+    return h.createWritable().then(function(w){
+      return w.write(text).then(function(){return w.close();});
+    });
+  }
+  function pickAndSave(json){
+    return window.showSaveFilePicker({suggestedName:charFileName(),
+      types:[{description:"Character file",accept:{"application/json":[".json"]}}]})
+      .then(function(h){charFileHandle=h;return writeHandle(h,json).then(function(){toast("Saved to "+h.name);});})
+      ["catch"](function(e){
+        if(e&&e.name==="AbortError")return;
+        downloadBlob(json,charFileName(),"application/json");toast("Saved to your downloads");
+      });
+  }
+  function saveChar(saveAs){
     if(!state.className){alert("Build a character first (pick a class).");return;}
     var json=JSON.stringify(serializeChar(),null,2);
-    var fname=(state.name||"character").replace(/[^\w \-]/g,"")+".json";
-    if(window.showSaveFilePicker){  // modern browsers: real "Save As" dialog
-      window.showSaveFilePicker({suggestedName:fname,types:[{description:"Character file",accept:{"application/json":[".json"]}}]})
-        .then(function(h){return h.createWritable();})
-        .then(function(w){return w.write(json).then(function(){return w.close();});})
-        ["catch"](function(e){if(!e||e.name!=="AbortError")downloadBlob(json,fname,"application/json");});
-    }else downloadBlob(json,fname,"application/json");
+    if(!canFilePicker()){downloadBlob(json,charFileName(),"application/json");toast("Saved to your downloads");return;}
+    if(charFileHandle&&!saveAs){
+      grantWrite(charFileHandle).then(function(ok){
+        if(!ok)return pickAndSave(json);
+        return writeHandle(charFileHandle,json).then(function(){toast("Saved to "+charFileHandle.name);});
+      })["catch"](function(){return pickAndSave(json);});
+      return;
+    }
+    pickAndSave(json);
+  }
+  // Loading through the picker gives us a handle we can overwrite later.
+  function loadViaPicker(fallbackInputId){
+    if(!canFilePicker()){$(fallbackInputId).click();return;}
+    window.showOpenFilePicker({multiple:false,
+      types:[{description:"Character file",accept:{"application/json":[".json"]}}]})
+      .then(function(hs){
+        var h=hs[0];charFileHandle=h;
+        return h.getFile().then(function(f){loadCharFile(f);});
+      })["catch"](function(e){
+        if(e&&e.name==="AbortError")return;
+        $(fallbackInputId).click();
+      });
   }
   function loadCharObj(o){
     if(!o||o._app!=="dnd-cc"){alert("That doesn't look like a saved character file.");return;}
@@ -2233,7 +2285,7 @@
     if(state.slug)loadFeatureData(state.slug,function(fd){state.fdata=fd;showBuild("sheet");});
     else showBuild("class");
   }
-  function loadCharFile(file){
+  function loadCharFile(file){   // note: charFileHandle is set by loadViaPicker when available
     var rd=new FileReader();
     rd.onload=function(){try{loadCharObj(JSON.parse(rd.result));}catch(e){alert("Could not read file: "+(e.message||e));}};
     rd.readAsText(file);
@@ -2399,10 +2451,13 @@
   $("toEquipment2").addEventListener("click",function(){setStep("equipment");});
   $("toSheet").addEventListener("click",function(){setStep("sheet");});
   $("toSpells2").addEventListener("click",function(){setStep("spells");});
-  $("btnSave").addEventListener("click",function(){$("stepsMenu").classList.remove("open");saveChar();});
+  $("btnSave").addEventListener("click",function(){$("stepsMenu").classList.remove("open");saveChar(false);});
+  $("btnSaveAs").addEventListener("click",function(){$("stepsMenu").classList.remove("open");saveChar(true);});
+  $("btnLoad").addEventListener("click",function(){$("stepsMenu").classList.remove("open");loadViaPicker("fileLoad");});
+  $("btnLoadStart").addEventListener("click",function(){loadViaPicker("fileLoadStart");});
   $("btnPdf").addEventListener("click",function(){$("stepsMenu").classList.remove("open");exportPdf();});
-  $("fileLoad").addEventListener("change",function(e){if(e.target.files&&e.target.files[0])loadCharFile(e.target.files[0]);e.target.value="";});
-  $("fileLoadStart").addEventListener("change",function(e){if(e.target.files&&e.target.files[0])loadCharFile(e.target.files[0]);e.target.value="";});
+  $("fileLoad").addEventListener("change",function(e){if(e.target.files&&e.target.files[0]){charFileHandle=null;loadCharFile(e.target.files[0]);}e.target.value="";});
+  $("fileLoadStart").addEventListener("change",function(e){if(e.target.files&&e.target.files[0]){charFileHandle=null;loadCharFile(e.target.files[0]);}e.target.value="";});
   $("abilityMethod").addEventListener("change",function(e){
     state.abilities.method=e.target.value;
     state.abilities.assign={};state.abilities.rolled=null;

@@ -43,7 +43,7 @@
     </div>
     <div class="edition-load">
       <span>Already have a character?</span>
-      <label class="btn ghost" for="fileLoadStart">&#128193; Load a saved character</label>
+      <button class="btn ghost" id="btnLoadStart">&#128193; Load a saved character</button>
       <input type="file" id="fileLoadStart" accept="application/json,.json" style="display:none">
     </div>
   </section>
@@ -65,7 +65,8 @@
       <button class="step" data-step="sheet"><span class="step-n">7</span> Sheet</button>
       <div class="menu-sep"></div>
       <button class="menu-action" id="btnSave">&#128190; Save character</button>
-      <label class="menu-action" for="fileLoad">&#128193; Load character</label>
+      <button class="menu-action" id="btnSaveAs">&#128190; Save as&hellip;</button>
+      <button class="menu-action" id="btnLoad">&#128193; Load character</button>
       <input type="file" id="fileLoad" accept="application/json,.json" style="display:none">
       <button class="menu-action" id="btnPdf">&#128196; Export to PDF</button>
       <div class="menu-sep"></div>

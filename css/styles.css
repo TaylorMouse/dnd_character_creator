@@ -439,3 +439,9 @@ tr.has-origin{cursor:help}
 .details-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 @media(max-width:560px){.details-grid{grid-template-columns:1fr}}
 .bg-sel,.det-sel{margin-bottom:8px}
+
+/* save confirmation */
+.toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(14px);
+  background:#2b2b2b;color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:700;
+  opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;z-index:50}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
