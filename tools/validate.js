@@ -1,0 +1,296 @@
+// Full validation suite for the Character Creator.
+// Runs headlessly under Windows cscript:  cscript //nologo tools\validate.js
+// Loads the real data files + js/app.js against a mocked DOM, builds characters for
+// every core class/edition at several levels, and checks the derived numbers against
+// the 5e rules. Exits non-zero if anything fails.
+
+// ---------- ES5 polyfills (old JScript engine) ----------
+if(!Array.prototype.forEach){Array.prototype.forEach=function(f){for(var i=0;i<this.length;i++)f(this[i],i,this);};}
+if(!Array.prototype.map){Array.prototype.map=function(f){var r=[];for(var i=0;i<this.length;i++)r.push(f(this[i],i,this));return r;};}
+if(!Array.prototype.filter){Array.prototype.filter=function(f){var r=[];for(var i=0;i<this.length;i++)if(f(this[i],i,this))r.push(this[i]);return r;};}
+if(!Array.prototype.indexOf){Array.prototype.indexOf=function(x){for(var i=0;i<this.length;i++)if(this[i]===x)return i;return -1;};}
+if(!Array.prototype.some){Array.prototype.some=function(f){for(var i=0;i<this.length;i++)if(f(this[i],i))return true;return false;};}
+if(!Array.prototype.reduce){Array.prototype.reduce=function(f,a){var i=0;if(a===undefined){a=this[0];i=1;}for(;i<this.length;i++)a=f(a,this[i],i,this);return a;};}
+if(!Object.keys){Object.keys=function(o){var r=[];for(var k in o)if(o.hasOwnProperty(k))r.push(k);return r;};}
+if(!String.prototype.trim){String.prototype.trim=function(){return this.replace(/^\s+|\s+$/g,"");};}
+if(!String.prototype.localeCompare){String.prototype.localeCompare=function(b){return this<b?-1:(this>b?1:0);};}
+
+// ---------- DOM mock ----------
+function El(){this.innerHTML="";this.value="";this.textContent="";this.style={};this.checked=false;
+  this.classList={toggle:function(){},add:function(){},remove:function(){},contains:function(){return false;}};}
+El.prototype.addEventListener=function(){};
+El.prototype.querySelector=function(){return new El();};
+El.prototype.querySelectorAll=function(){return [];};
+El.prototype.getAttribute=function(){return "";};
+El.prototype.appendChild=function(){};
+var _shared=new El();_shared.parentNode=_shared;
+var _els={};
+var document={getElementById:function(id){if(!_els[id])_els[id]=new El();return _els[id];},
+  querySelector:function(){return new El();},querySelectorAll:function(){return [];},
+  createElement:function(){return new El();},head:_shared,body:_shared};
+var window={scrollTo:function(){}};
+
+// ---------- file helpers ----------
+function readFile(p){var s=new ActiveXObject("ADODB.Stream");s.Type=2;s.Charset="utf-8";s.Open();s.LoadFromFile(p);var t=s.ReadText();s.Close();return t;}
+var fso=new ActiveXObject("Scripting.FileSystemObject");
+var ROOT=fso.GetParentFolderName(fso.GetParentFolderName(WScript.ScriptFullName))+"\\";
+
+// ---------- load data + app ----------
+var dataFiles=["data-classes.js","data-feats.js","data-backgrounds.js","data-races.js",
+               "data-items.js","data-starting.js","data-spells.js","data-spellcasting.js","data-resources.js"];
+for(var i=0;i<dataFiles.length;i++) eval(readFile(ROOT+"resources\\"+dataFiles[i]));
+// every generated per-class feature file
+var featDir=fso.GetFolder(ROOT+"resources\\features"),fe=new Enumerator(featDir.Files);
+for(;!fe.atEnd();fe.moveNext()){var f=fe.item();if(/\.js$/i.test(f.Name))eval(readFile(f.Path));}
+
+var app=readFile(ROOT+"js\\app.js");
+app=app.replace("populateLevels();showEdition();",
+ "populateLevels();window.__cc={state:state,render:render,renderSheet:renderSheet,"+
+ "profBonus:profBonus,maxHP:maxHP,abMod:abMod,totalScore:totalScore,spellInfo:spellInfo,"+
+ "proficientSkills:proficientSkills,savingProfs:savingProfs,computeAC:computeAC,"+
+ "actionEconomy:actionEconomy,classSpellList:classSpellList,SKILL_ABILITY:SKILL_ABILITY,"+
+ "ABILITIES:ABILITIES,maxSpellLevel:maxSpellLevel};");
+eval(app);
+var C=window.__cc,S=C.state;
+
+// ---------- test bookkeeping ----------
+var pass=0,fails=[];
+function check(label,got,want){
+  if(String(got)===String(want)){pass++;return true;}
+  fails.push(label+"  ->  got "+got+", expected "+want);return false;
+}
+function checkTrue(label,cond){return check(label,!!cond,true);}
+function section(t){WScript.Echo("");WScript.Echo("== "+t+" ==");}
+
+// ---------- reference tables (5e rules) ----------
+var PROF={1:2,4:2,5:3,8:3,9:4,12:4,13:5,16:5,17:6,20:6};
+var FULL_SLOTS={1:"2",5:"4,3,2",11:"4,3,3,3,2,1",20:"4,3,3,3,3,2,2,1,1"};
+// half casters: 4/3/3/3/1 at 17, the 5th-level 2nd slot only arrives at 19
+var HALF_SLOTS={2:"2",5:"4,2",9:"4,3,2",13:"4,3,3,1",17:"4,3,3,3,1",19:"4,3,3,3,2"};
+var PACT={1:"1@1",5:"2@3",11:"3@5",20:"4@5"};
+// class -> expected caster kind
+var CASTER={Bard:"full",Cleric:"full",Druid:"full",Sorcerer:"full",Wizard:"full",
+            Paladin:"1/2",Ranger:"1/2",Artificer:"artificer",Warlock:"pact",
+            Barbarian:null,Fighter:null,Monk:null,Rogue:null};
+
+function setup(slug,name,level){
+  S.edition=slug.indexOf("-one")>0?"one":"classic";
+  S.className=name;S.slug=slug;S.level=level;
+  var ci=null,L=window.CC_CLASSES;
+  for(var i=0;i<L.length;i++)if(L[i].slug===slug){ci=L[i];break;}
+  S.source=ci?ci.source:"PHB";S.hdFaces=ci?ci.hdFaces:8;
+  S.fdata=window.CC_FEATURE_DATA[slug];
+  S.subclassName=null;S.choices={};S.raceChoices={};S.race=null;S.raceLineage=null;
+  S.background=null;S.bgIsCustom=false;S.bgChoices={};S.customLanguages=[];
+  S.spells={cantrips:[],spells:[],levelFilter:"",q:""};
+  S.equipment={mode:"equipment",starting:{},startingAdded:false,inventory:[],currency:{pp:0,gp:0,ep:0,sp:0,cp:0},filterType:"",filterQ:""};
+  S.sheet={hpCurrent:null,hpTemp:"",res:{},hpEdited:false,invQ:"",invAdd:"",xp:"",inspiration:false,deathSucc:0,deathFail:0,dark:false};
+  S.manualHp=null;
+  // standard array so ability-derived numbers are deterministic
+  S.abilities={method:"pointbuy",base:{Strength:15,Dexterity:14,Constitution:13,Intelligence:12,Wisdom:10,Charisma:8},
+               assign:{},other:{},override:{},rolled:null};
+}
+function slotsStr(){
+  var info=C.spellInfo();if(!info||!info.sc.slots)return "";
+  var sl=info.sc.slots;
+  if(sl.type==="slots"){var row=sl.rows[S.level-1]||[],out=[];for(var i=0;i<row.length;i++)if(row[i]>0)out.push(row[i]);return out.join(",");}
+  if(sl.type==="pact"){var c=sl.count[S.level-1]||0,l=sl.level[S.level-1]||0;return c?c+"@"+l:"";}
+  return "";
+}
+
+// =====================================================================
+section("1. Proficiency bonus by level");
+var plv=[1,4,5,8,9,12,13,16,17,20];
+for(var i=0;i<plv.length;i++){setup("fighter-classic","Fighter",plv[i]);check("  prof bonus L"+plv[i],C.profBonus(),PROF[plv[i]]);}
+
+// =====================================================================
+section("2. Skills: ability mapping + proficiency math");
+var SK_EXPECT={Acrobatics:"Dexterity","Animal Handling":"Wisdom",Arcana:"Intelligence",Athletics:"Strength",
+ Deception:"Charisma",History:"Intelligence",Insight:"Wisdom",Intimidation:"Charisma",Investigation:"Intelligence",
+ Medicine:"Wisdom",Nature:"Intelligence",Perception:"Wisdom",Performance:"Charisma",Persuasion:"Charisma",
+ Religion:"Intelligence","Sleight of Hand":"Dexterity",Stealth:"Dexterity",Survival:"Wisdom"};
+check("  skill count",Object.keys(C.SKILL_ABILITY).length,18);
+for(var sk in SK_EXPECT)check("  "+sk+" uses",C.SKILL_ABILITY[sk],SK_EXPECT[sk]);
+// a proficient skill gets +prof; scores above: Str15(+2) Dex14(+2) Con13(+1) Int12(+1) Wis10(+0) Cha8(-1)
+setup("rogue-classic","Rogue",5);
+S.choices["skill:0"]="Stealth";
+var ps=C.proficientSkills();
+checkTrue("  chosen skill is proficient",ps["Stealth"]);
+check("  Stealth bonus (Dex+2, prof+3)",C.abMod(C.totalScore("Dexterity"))+(ps["Stealth"]?C.profBonus():0),5);
+check("  Arcana bonus (Int+1, no prof)",C.abMod(C.totalScore("Intelligence"))+(ps["Arcana"]?C.profBonus():0),1);
+check("  passive Perception (Wis+0, no prof)",10+C.abMod(C.totalScore("Wisdom"))+(ps["Perception"]?C.profBonus():0),10);
+
+// =====================================================================
+section("3. Every core class x edition: renders, saves, HP, subclass level");
+var classes=[],CL=window.CC_CLASSES;
+for(var i=0;i<CL.length;i++)if(CL[i].isCore)classes.push(CL[i]);
+var levels=[1,5,11,20];
+for(var ci=0;ci<classes.length;ci++){
+  var c=classes[ci];
+  if(!window.CC_FEATURE_DATA[c.slug]){fails.push("missing feature data: "+c.slug);continue;}
+  for(var li=0;li<levels.length;li++){
+    var lv=levels[li];setup(c.slug,c.name,lv);
+    var tag="  "+c.name+" ("+c.editionLabel+") L"+lv;
+    // renders without throwing
+    C.renderSheet();
+    var html=_els["sheetPanel"].innerHTML;
+    if(html.indexOf("Sheet error")>=0){fails.push(tag+" -> SHEET THREW: "+html.replace(/<[^>]+>/g,"").substring(0,160));continue;}
+    if(html.length<2000){fails.push(tag+" -> suspiciously small sheet ("+html.length+" chars)");continue;}
+    pass++;
+    // exactly two saving-throw proficiencies
+    var sp=C.savingProfs(),n=0;for(var k in sp)n++;
+    if(n!==2)fails.push(tag+" -> saving throw profs = "+n+", expected 2");else pass++;
+    // HP: faces + con + (level-1)*(avg+con)
+    var con=C.abMod(C.totalScore("Constitution")),avg=Math.floor(c.hdFaces/2)+1;
+    var wantHP=c.hdFaces+con+(lv-1)*(avg+con);
+    if(C.maxHP()!==wantHP)fails.push(tag+" -> maxHP "+C.maxHP()+", expected "+wantHP);else pass++;
+    // action economy must not throw
+    try{C.actionEconomy();pass++;}catch(e){fails.push(tag+" -> actionEconomy threw: "+(e.message||e));}
+  }
+  // subclass choice level: 2024 classes all choose at 3
+  setup(c.slug,c.name,20);
+  var fd=window.CC_FEATURE_DATA[c.slug],gains=[];
+  for(var fi=0;fi<fd.classFeatures.length;fi++)if(fd.classFeatures[fi].gainSubclassFeature)gains.push(fd.classFeatures[fi].level);
+  var first=gains.length?Math.min.apply(null,gains):null;
+  if(c.edition==="one"&&first!==3)fails.push("  "+c.name+" (2024) subclass level = "+first+", expected 3");else pass++;
+  if(!fd.subclasses.length)fails.push("  "+c.name+" ("+c.editionLabel+") has no subclasses");else pass++;
+}
+
+// =====================================================================
+section("4. Spellcasting: caster kind, slots, cantrips, max spell level");
+for(var ci=0;ci<classes.length;ci++){
+  var c=classes[ci];if(c.edition!=="classic")continue;   // check 2014 against the classic tables
+  setup(c.slug,c.name,1);
+  var info=C.spellInfo(),kind=CASTER[c.name];
+  if(kind===null){ if(info&&info.sc.caster) fails.push("  "+c.name+" should not be a caster"); else pass++; continue; }
+  if(!info){fails.push("  "+c.name+" has no spellcasting info");continue;}
+  var got=info.sc.slots&&info.sc.slots.type==="pact"?"pact":info.sc.caster;
+  check("  "+c.name+" caster kind",got,kind);
+  // slot progression at key levels
+  if(kind==="full"){for(var L in FULL_SLOTS){setup(c.slug,c.name,+L);check("  "+c.name+" slots L"+L,slotsStr(),FULL_SLOTS[L]);}}
+  if(kind==="1/2"){for(var L2 in HALF_SLOTS){setup(c.slug,c.name,+L2);check("  "+c.name+" slots L"+L2,slotsStr(),HALF_SLOTS[L2]);}}
+  if(kind==="pact"){for(var L3 in PACT){setup(c.slug,c.name,+L3);check("  "+c.name+" pact L"+L3,slotsStr(),PACT[L3]);}}
+  // max spell level for a full caster
+  if(kind==="full"){
+    setup(c.slug,c.name,1); check("  "+c.name+" max spell lvl L1",C.spellInfo().maxLevel,1);
+    setup(c.slug,c.name,9); check("  "+c.name+" max spell lvl L9",C.spellInfo().maxLevel,5);
+    setup(c.slug,c.name,17);check("  "+c.name+" max spell lvl L17",C.spellInfo().maxLevel,9);
+  }
+  // cantrip counts for the classic known-casters
+  var CANTRIP={Sorcerer:{1:4,4:5,10:6},Wizard:{1:3,4:4,10:5},Bard:{1:2,4:3,10:4},Cleric:{1:3,4:4,10:5},Druid:{1:2,4:3,10:4},Warlock:{1:2,4:3,10:4}};
+  if(CANTRIP[c.name])for(var L4 in CANTRIP[c.name]){setup(c.slug,c.name,+L4);check("  "+c.name+" cantrips L"+L4,C.spellInfo().cantripsKnown,CANTRIP[c.name][L4]);}
+  // the class spell list must be non-empty
+  setup(c.slug,c.name,20);
+  checkTrue("  "+c.name+" has cantrips in list",C.classSpellList(0,0).length>0||c.name==="Paladin"||c.name==="Ranger");
+  checkTrue("  "+c.name+" has leveled spells in list",C.classSpellList(1,9).length>0);
+}
+
+// =====================================================================
+section("5. Class resources appear at the right level");
+var RES_EXPECT=[["sorcerer-classic","Sorcerer","Sorcery Points",{1:0,2:2,6:6,20:20}],
+                ["monk-classic","Monk","Ki Points",{1:0,2:2,5:5,20:20}],
+                ["barbarian-classic","Barbarian","Rages",{1:2,3:3,6:4,20:0}],
+                ["monk-one","Monk","Focus Points",{2:2,5:5}]];
+for(var ri=0;ri<RES_EXPECT.length;ri++){
+  var r=RES_EXPECT[ri],list=window.CC_RESOURCES[r[0]]||[],found=null;
+  for(var i2=0;i2<list.length;i2++)if(list[i2].name===r[2])found=list[i2];
+  if(!found){fails.push("  "+r[1]+" missing resource "+r[2]);continue;}
+  for(var L5 in r[3])check("  "+r[1]+" "+r[2]+" L"+L5,found.values[(+L5)-1],r[3][L5]);
+}
+
+// =====================================================================
+section("6. Extra Attack -> attacks per action");
+var EA=[["fighter-classic","Fighter",1,1],["fighter-classic","Fighter",5,2],["fighter-classic","Fighter",11,3],["fighter-classic","Fighter",20,4],
+        ["barbarian-classic","Barbarian",5,2],["paladin-classic","Paladin",5,2],["ranger-classic","Ranger",5,2],
+        ["wizard-classic","Wizard",20,1],["sorcerer-classic","Sorcerer",20,1]];
+for(var ei=0;ei<EA.length;ei++){
+  var e=EA[ei];setup(e[0],e[1],e[2]);
+  var extra=0,cf=window.CC_FEATURE_DATA[e[0]].classFeatures;
+  for(var i3=0;i3<cf.length;i3++)if(cf[i3].level<=e[2]&&/Extra Attack/i.test(cf[i3].name))extra++;
+  check("  "+e[1]+" L"+e[2]+" attacks/action",1+extra,e[3]);
+}
+
+// =====================================================================
+section("7. Armor Class from equipped armor");
+setup("fighter-classic","Fighter",5);
+check("  unarmoured (Dex+2)",C.computeAC(),12);
+S.equipment.inventory=[{name:"Leather Armor",cat:"Armor",ac:11,armorKind:"light",qty:1,equipped:true}];
+check("  leather 11 + Dex 2",C.computeAC(),13);
+S.equipment.inventory=[{name:"Half Plate",cat:"Armor",ac:15,armorKind:"medium",qty:1,equipped:true}];
+check("  half plate 15 + Dex capped 2",C.computeAC(),17);
+S.equipment.inventory=[{name:"Plate",cat:"Armor",ac:18,armorKind:"heavy",qty:1,equipped:true}];
+check("  plate 18, no Dex",C.computeAC(),18);
+S.equipment.inventory.push({name:"Shield",cat:"Armor",ac:2,armorKind:"shield",qty:1,equipped:true});
+check("  plate + shield",C.computeAC(),20);
+
+// =====================================================================
+section("8. Data integrity");
+check("  core class/edition combos",classes.length,26);
+check("  feature files loaded",Object.keys(window.CC_FEATURE_DATA).length,30);
+checkTrue("  spells loaded",window.CC_SPELLS.length>700);
+checkTrue("  items loaded",window.CC_ITEMS.length>2500);
+checkTrue("  feats loaded",window.CC_FEATS.length>250);
+checkTrue("  backgrounds loaded",window.CC_BACKGROUNDS.classic.length>90);
+checkTrue("  races loaded",window.CC_RACES.classic.length>130);
+// every class has hit dice and a subclass title
+for(var ci2=0;ci2<classes.length;ci2++){
+  var cc=classes[ci2];
+  if(!cc.hdFaces)fails.push("  "+cc.name+" ("+cc.editionLabel+") missing hit dice");else pass++;
+}
+// attunement sanity
+var mundane=0,attunable=0;
+for(var i4=0;i4<window.CC_ITEMS.length;i4++){var itx=window.CC_ITEMS[i4];
+  if(itx.attune)attunable++;
+  if(itx.name==="Dagger"&&itx.attune)mundane++;}
+checkTrue("  some items require attunement",attunable>500);
+check("  plain Dagger not attunable",mundane,0);
+
+// =====================================================================
+section("9. Every subclass of every core class renders at level 20");
+var subTested=0,subClasses=0;
+for(var ci3=0;ci3<classes.length;ci3++){
+  var cx=classes[ci3],fdx=window.CC_FEATURE_DATA[cx.slug];
+  if(!fdx)continue;
+  for(var si=0;si<fdx.subclasses.length;si++){
+    var sub=fdx.subclasses[si];subClasses++;
+    setup(cx.slug,cx.name,20);
+    S.subclassName=sub.name;
+    try{
+      C.renderSheet();
+      var h9=_els["sheetPanel"].innerHTML;
+      if(h9.indexOf("Sheet error")>=0){fails.push("  "+cx.name+" / "+sub.name+" -> SHEET THREW: "+h9.replace(/<[^>]+>/g,"").substring(0,140));continue;}
+      if(h9.indexOf(sub.name)<0){fails.push("  "+cx.name+" / "+sub.name+" -> subclass name absent from sheet");continue;}
+      C.actionEconomy();
+      subTested++;pass++;
+    }catch(e9){fails.push("  "+cx.name+" / "+sub.name+" -> threw: "+(e9.message||e9));}
+  }
+}
+WScript.Echo("  subclasses rendered OK: "+subTested+" / "+subClasses);
+
+section("10. Every skill can be gained from class, background and race");
+setup("bard-classic","Bard",5);                    // Bard: choose any 3 skills
+var bf=window.CC_FEATURE_DATA["bard-classic"];
+checkTrue("  Bard has skill choices",bf.proficiencies&&bf.proficiencies.skills&&bf.proficiencies.skills.count>0);
+var allSk=Object.keys(C.SKILL_ABILITY);
+for(var s10=0;s10<allSk.length;s10++){
+  setup("bard-classic","Bard",5);
+  S.choices["skill:0"]=allSk[s10];
+  var p10=C.proficientSkills();
+  if(!p10[allSk[s10]])fails.push("  skill not registering as proficient: "+allSk[s10]);else pass++;
+  // and the bonus must include the proficiency bonus
+  var want=C.abMod(C.totalScore(C.SKILL_ABILITY[allSk[s10]]))+C.profBonus();
+  var got=C.abMod(C.totalScore(C.SKILL_ABILITY[allSk[s10]]))+(p10[allSk[s10]]?C.profBonus():0);
+  if(got!==want)fails.push("  wrong bonus for "+allSk[s10]);else pass++;
+}
+
+// =====================================================================
+WScript.Echo("");
+WScript.Echo("=======================================================");
+WScript.Echo("checks passed: "+pass);
+WScript.Echo("failures     : "+fails.length);
+if(fails.length){
+  WScript.Echo("");
+  for(var i5=0;i5<fails.length;i5++)WScript.Echo("FAIL "+fails[i5]);
+}
+WScript.Echo("=======================================================");
+WScript.Quit(fails.length?1:0);

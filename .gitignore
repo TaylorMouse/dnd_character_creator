@@ -1,0 +1,10 @@
+# OS / editor cruft
+Thumbs.db
+.DS_Store
+desktop.ini
+*.swp
+*~
+
+# scratch / temp
+scratchpad/
+*.tmp
