@@ -1442,10 +1442,7 @@
     // spells
     var info=spellInfo(),spBody="";
     if(info){
-      var sl=info.sc.slots,slotB="";
-      if(sl&&sl.type==="slots"){var row=sl.rows[state.level-1]||[];for(var i=0;i<row.length;i++)if(row[i]>0)slotB+='<span class="slot-badge"><b>'+row[i]+"</b> &times; "+ordinal(i+1)+"</span>";}
-      else if(sl&&sl.type==="pact"){var pc=sl.count[state.level-1]||0,plv=sl.level[state.level-1]||0;if(pc>0)slotB='<span class="slot-badge"><b>'+pc+"</b> &times; "+ordinal(plv)+"</span>";}
-      if(slotB)spBody+='<div class="slot-row" style="margin:0 0 10px">'+slotB+"</div>";
+      // slot counts are shown in the Spell Slots card above, so they are not repeated here
       if(state.spells.cantrips.length)spBody+='<div class="spell-lvl-h">Cantrips</div>'+sheetCollapse(spellItems(state.spells.cantrips),"sc");
       var byLvl={};state.spells.spells.forEach(function(k){var s=spellByKey(k);if(s){(byLvl[s.level]=byLvl[s.level]||[]).push(k);}});
       Object.keys(byLvl).sort().forEach(function(lv){spBody+='<div class="spell-lvl-h">Level '+lv+'</div>'+sheetCollapse(spellItems(byLvl[lv]),"s"+lv);});
