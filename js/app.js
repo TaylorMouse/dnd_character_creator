@@ -875,15 +875,15 @@
   }
   // effective weapon stats: own stats, or a variant applied to its chosen base weapon
   function resolveWeapon(it){
-    var att=itemAttune(it),attuneOk=!att||att==="optional"||!!it.attuned;
+    var att=itemAttune(it),attRequired=!!att&&att!=="optional",attuneOk=!attRequired||!!it.attuned;
     var bonus=0,bw=it.bonusWeapon||(itemInfo(it.name,it.source)||{}).bonusWeapon;
     if(bw&&attuneOk)bonus=parseInt(String(bw).replace("+",""),10)||0;
-    if(it.dmg)return {name:it.name,dmg:it.dmg,dmgType:it.dmgType,wtype:it.wtype,range:it.range,props:it.props||[],bonus:bonus,attuneOk:attuneOk,att:att};
+    if(it.dmg)return {name:it.name,dmg:it.dmg,dmgType:it.dmgType,wtype:it.wtype,range:it.range,props:it.props||[],bonus:bonus,attuneOk:attuneOk,attRequired:attRequired,att:att};
     if(!isVariantWeapon(it)||!it.base)return null;
     var b=null,L=window.CC_ITEMS||[];
     for(var i=0;i<L.length;i++)if(L[i].name===it.base&&L[i].dmg){b=L[i];break;}
     if(!b)return null;
-    return {name:it.name+" ("+b.name+")",dmg:b.dmg,dmgType:b.dmgType,wtype:b.wtype,range:b.range,props:b.props||[],bonus:bonus,attuneOk:attuneOk,att:att};
+    return {name:it.name+" ("+b.name+")",dmg:b.dmg,dmgType:b.dmgType,wtype:b.wtype,range:b.range,props:b.props||[],bonus:bonus,attuneOk:attuneOk,attRequired:attRequired,att:att};
   }
   // attunement is only possible on items whose data says so (reqAttune)
   function itemAttune(it){
@@ -1325,8 +1325,10 @@
     var rows="";
     state.equipment.inventory.forEach(function(it){
       if(it.cat!=="Weapon")return;
+      if(!it.equipped)return;             // only weapons you are actually wielding
       var w=resolveWeapon(it);
       if(!w)return;                       // e.g. a magic variant with no base weapon chosen yet
+      if(w.attRequired&&!it.attuned)return;   // requires attunement, and you are not attuned
       var props=w.props||[],finesse=props.indexOf("Finesse")>=0,thrown=props.indexOf("Thrown")>=0;
       var mod=(w.wtype==="R"?dexM:(finesse?Math.max(strM,dexM):strM))+w.bonus;
       var range=w.wtype==="R"?(w.range?w.range+" ft.":"Ranged"):(thrown&&w.range?"5 ft. / "+w.range:"5 ft.");
@@ -1334,7 +1336,7 @@
       var dstr=w.dmg+(dbonus>0?"+"+dbonus:(dbonus<0?""+dbonus:""))+" "+dmgAbbr(w.dmgType);
       var notes=props.join(", ");
       if(w.bonus)notes=(notes?notes+" · ":"")+"magic +"+w.bonus;
-      if(w.att&&!w.attuneOk)notes=(notes?notes+" · ":"")+"NOT ATTUNED — no magic bonus";
+      if(w.att==="optional"&&!it.attuned)notes=(notes?notes+" · ":"")+"not attuned — no magic bonus";
       rows+=row(w.name,w.wtype==="R"?"Ranged Weapon":"Melee Weapon",range,modStr(mod+prof),dstr,notes);
     });
     rows+=row("Unarmed Strike","Melee","5 ft.",modStr(strM+prof),Math.max(1,1+strM)+" bludgeoning","");   // unarmed damage is always at least 1
