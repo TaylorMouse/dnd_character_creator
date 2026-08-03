@@ -369,6 +369,39 @@ if(pk){
   checkTrue("  switching it back on restores it",!!C.proficientSkills()["Survival"]);
 }
 
+
+// =====================================================================
+section("7g. Action-economy entries know where they came from");
+setup("barbarian-classic","Barbarian",6);
+S.subclassName="Path of the Beast";
+S.race={name:"Shifter",source:"MPMM"};S.raceLineage=null;
+var ae2=C.actionEconomy(),byName={};
+["action","bonus","reaction"].forEach(function(kind){
+  for(var i=0;i<ae2[kind].length;i++)byName[ae2[kind][i].name]=ae2[kind][i];
+});
+checkTrue("  Rage is a bonus action",!!byName["Rage"]);
+if(byName["Rage"])checkTrue("  ...credited to the Barbarian class",byName["Rage"].origin.indexOf("class feature")>=0);
+checkTrue("  Shifting is present",!!byName["Shifting"]);
+if(byName["Shifting"])checkTrue("  ...credited to the species",byName["Shifting"].origin.indexOf("species trait")>=0);
+// every entry must carry an origin
+var missing=0;
+["action","bonus","reaction"].forEach(function(kind){
+  for(var i=0;i<ae2[kind].length;i++)if(!ae2[kind][i].origin)missing++;
+});
+check("  no entry lacks an origin",missing,0);
+// feature attacks too
+var fa2=C.featureAttacks(),noOrigin=0;
+for(var i=0;i<fa2.length;i++)if(!fa2[i].origin)noOrigin++;
+checkTrue("  beast-form attacks exist",fa2.length>=3);
+check("  ...and all name their source",noOrigin,0);
+// a lineage that already carries its book must not repeat it
+setup("sorcerer-classic","Sorcerer",6);
+S.race={name:"Elf",source:"PHB"};S.raceLineage="Eladrin (MTF)";
+var ft3=C.featuresAndTraits(),fey=null;
+for(var i=0;i<ft3.length;i++)if(ft3[i].name==="Fey Step")fey=ft3[i];
+checkTrue("  Fey Step found on the Eladrin lineage",!!fey);
+if(fey)check("  origin does not repeat the book",fey._origin.indexOf("(MTF) (MTF)"),-1);
+
 // =====================================================================
 section("8. Data integrity");
 check("  core class/edition combos",classes.length,26);

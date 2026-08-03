@@ -413,6 +413,8 @@ body.dark .ac-edit{background:#262626;border-color:#4a4a4a}
 .spell-lvl-h{font-weight:800;font-size:13px;margin:8px 0 3px;color:var(--accent2)}
 .apa{font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px}
 .apa b{color:var(--accent);font-size:15px}
+tr.has-origin{cursor:help}
+.sc-h.has-origin{cursor:help}
 .atk-table{width:100%;border-collapse:collapse;font-size:13px}
 .atk-table th{text-align:left;font-size:10px;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);padding:4px 8px;border-bottom:1px solid var(--line)}
 .atk-table td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}

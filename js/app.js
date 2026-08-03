@@ -1639,7 +1639,8 @@
     if(!items||!items.length)return '<span class="res-sub">None.</span>';
     return items.map(function(it,i){
       var d=(it.entries&&it.entries.length)?it.entries.map(renderEntry).join(""):'<p class="res-sub">No description.</p>';
-      return '<div class="sc-item"><div class="sc-h" data-tgt="'+prefix+i+'">'+esc(it.name)+'<span class="sc-chev">&#9662;</span></div><div class="sc-d">'+d+"</div></div>";
+      var why=it.origin?' title="'+esc(it.origin)+'"':"";
+      return '<div class="sc-item"><div class="sc-h'+(it.origin?" has-origin":"")+'"'+why+' data-tgt="'+prefix+i+'">'+esc(it.name)+'<span class="sc-chev">&#9662;</span></div><div class="sc-d">'+d+"</div></div>";
     }).join("");
   }
   function spellItems(keys){
@@ -1732,31 +1733,40 @@
   // subclass (up to the current level), with nested feature references expanded.
   function featuresAndTraits(){
     var race=currentRace(),lin=race?currentLineage(race):null,fd=state.fdata,list=[];
-    if(race)list=list.concat(race.traits||[]);
-    if(lin)list=list.concat(lin.traits||[]);
+    // shallow copy so we can record an origin without touching the shared data
+    function tag(f,origin){var o={},k;for(k in f)o[k]=f[k];o._origin=origin;return o;}
+    function withSrc(nm,src){return (src&&String(nm).indexOf("("+src+")")<0)?nm+" ("+src+")":nm;}
+    if(race)(race.traits||[]).forEach(function(x){list.push(tag(x,race.name+" ("+race.source+") — species trait"));});
+        if(lin)(lin.traits||[]).forEach(function(x){list.push(tag(x,withSrc(lin.name,lin.source)+" — lineage trait"));});
     if(fd){
-      (fd.classFeatures||[]).forEach(function(f){if(f.level<=state.level&&optEnabled(f))list.push(f);});
+      (fd.classFeatures||[]).forEach(function(f){
+        if(f.level>state.level||!optEnabled(f))return;
+        list.push(tag(f,state.className+" — class feature, level "+f.level+(f.optional?" (optional, "+f.source+")":"")));
+      });
       var chosen=state.subclassName?(fd.subclasses||[]).filter(function(s){return s.name===state.subclassName;})[0]:null;
-      if(chosen)(chosen.features||[]).forEach(function(f){if(f.level<=state.level)list.push(f);});
+      if(chosen)(chosen.features||[]).forEach(function(f){
+        if(f.level>state.level)return;
+        list.push(tag(f,withSrc(chosen.name,chosen.source)+" — subclass feature, level "+f.level));
+      });
     }
     var lookup=(fd&&fd.refLookup)||{},expanded=[],seen={};
-    function collectRefs(e){
+    function collectRefs(e,origin){
       if(!e)return;
-      if(e instanceof Array){for(var i=0;i<e.length;i++)collectRefs(e[i]);return;}
+      if(e instanceof Array){for(var i=0;i<e.length;i++)collectRefs(e[i],origin);return;}
       if(typeof e!=="object")return;
       var key=e.classFeature||e.subclassFeature;
       if((e.type==="refClassFeature"||e.type==="refSubclassFeature")&&key&&lookup[key]&&!seen[key]){
-        seen[key]=1;expanded.push(lookup[key]);collectRefs(lookup[key].entries);return;
+        seen[key]=1;expanded.push(tag(lookup[key],origin));collectRefs(lookup[key].entries,origin);return;
       }
-      for(var k in e){if(k!=="type"&&k!=="name")collectRefs(e[k]);}
+      for(var k in e){if(k!=="type"&&k!=="name")collectRefs(e[k],origin);}
     }
-    list.forEach(function(t){collectRefs(t.entries);});
+    list.forEach(function(x){collectRefs(x.entries,x._origin);});
     return list.concat(expanded);
   }
   // classify features/traits (+ racial bonus-action spells) by action economy; keep entries for descriptions
   function actionEconomy(){
     var out={action:[],bonus:[],reaction:[]},seen={};
-    function push(list,key,it){if(seen[key])return;seen[key]=1;list.push({name:it.name,entries:it.entries||[]});}
+    function push(list,key,it){if(seen[key])return;seen[key]=1;list.push({name:it.name,entries:it.entries||[],origin:it._origin||""});}
     // a feature can belong to several buckets (e.g. Storm Guide: an action AND a bonus action)
     function classify(t){
       var txt=actionText(t.entries||"").toLowerCase();
@@ -1767,7 +1777,7 @@
     featuresAndTraits().forEach(classify);
     var race=currentRace(),lin=race?currentLineage(race):null;
     var rsp=[];if(race)rsp=rsp.concat(race.spells||[]);if(lin)rsp=rsp.concat(lin.spells||[]);
-    rsp.forEach(function(sp){var s=spellByName(sp.name);if(s&&s.time&&s.time.indexOf("bonus")>=0)push(out.bonus,"b"+s.name,s);});
+    rsp.forEach(function(sp){var s=spellByName(sp.name);if(s&&s.time&&s.time.indexOf("bonus")>=0){var c={};for(var kk in s)c[kk]=s[kk];c._origin=(race?race.name:"species")+" — innate spell";push(out.bonus,"b"+s.name,c);}});
     return out;
   }
   function dmgAbbr(c){return {P:"piercing",S:"slashing",B:"bludgeoning"}[c]||c||"";}
@@ -1784,7 +1794,7 @@
           if(!m)return;
           var key=f.name+":"+it.name;
           if(seen[key])return;seen[key]=1;
-          out.push({name:it.name,parent:f.name,dmg:m[1],dmgType:m[2].toLowerCase(),
+          out.push({name:it.name,parent:f.name,origin:f._origin||"",dmg:m[1],dmgType:m[2].toLowerCase(),
                     reach:/reach/i.test(txt),finesse:/finesse/i.test(txt)});
         });
       });
@@ -1796,7 +1806,11 @@
   function actionsCardHtml(){
     var prof=profBonus(),strM=abMod(totalScore("Strength")),dexM=abMod(totalScore("Dexterity"));
     var info=spellInfo(),castMod=info?abMod(totalScore(info.ability)):0,spAtk=info?prof+castMod:null,spDC=info?8+prof+castMod:null;
-    function row(name,sub,range,hit,dmg,notes){return '<tr><td><div class="atk-name">'+esc(name)+'</div>'+(sub?'<div class="atk-sub">'+esc(sub)+"</div>":"")+"</td><td>"+esc(range||"—")+'</td><td class="atk-hit">'+hit+"</td><td>"+esc(dmg)+'</td><td class="atk-notes">'+esc(notes||"")+"</td></tr>";}
+    function row(name,sub,range,hit,dmg,notes,why){
+      return '<tr'+(why?' class="has-origin" title="'+esc(why)+'"':"")+'><td><div class="atk-name">'+esc(name)+"</div>"+
+        (sub?'<div class="atk-sub">'+esc(sub)+"</div>":"")+"</td><td>"+esc(range||"—")+
+        '</td><td class="atk-hit">'+hit+"</td><td>"+esc(dmg)+'</td><td class="atk-notes">'+esc(notes||"")+"</td></tr>";
+    }
     var rows="";
     state.equipment.inventory.forEach(function(it){
       if(it.cat!=="Weapon")return;
@@ -1812,25 +1826,30 @@
       var notes=props.join(", ");
       if(w.bonus)notes=(notes?notes+" · ":"")+"magic +"+w.bonus;
       if(w.att==="optional"&&!it.attuned)notes=(notes?notes+" · ":"")+"not attuned — no magic bonus";
-      rows+=row(w.name,w.wtype==="R"?"Ranged Weapon":"Melee Weapon",range,modStr(mod+prof),dstr,notes);
+      rows+=row(w.name,w.wtype==="R"?"Ranged Weapon":"Melee Weapon",range,modStr(mod+prof),dstr,notes,
+                "Equipped item"+(it.source?" — "+sourceName(it.source):""));
     });
-    rows+=row("Unarmed Strike","Melee","5 ft.",modStr(strM+prof),Math.max(1,1+strM)+" bludgeoning","");   // unarmed damage is always at least 1
+    rows+=row("Unarmed Strike","Melee","5 ft.",modStr(strM+prof),Math.max(1,1+strM)+" bludgeoning","",
+              "Available to every character");   // unarmed damage is always at least 1
     featureAttacks().forEach(function(a){                 // e.g. Bite / Claws / Tail from Form of the Beast
       var mod=a.finesse?Math.max(strM,dexM):strM;
       rows+=row(a.name,a.parent,a.reach?"10 ft. (reach)":"5 ft.",modStr(mod+prof),
-                a.dmg+(mod>0?"+"+mod:(mod<0?""+mod:""))+" "+a.dmgType,a.reach?"Reach":"");
+                a.dmg+(mod>0?"+"+mod:(mod<0?""+mod:""))+" "+a.dmgType,a.reach?"Reach":"",
+                a.origin?(a.parent+" — "+a.origin):a.parent);
     });
     if(info){
       state.spells.cantrips.forEach(function(k){
         var s=spellByKey(k);if(!s||!s.scaling)return;
         var die=scaledDie(s.scaling,state.level);
         var hit=s.atk?modStr(spAtk):(s.save?"DC "+spDC:"—");
-        rows+=row(s.name,"Cantrip",s.range||"—",hit,die+" "+(s.dmgType||""),(s.save?"Save: "+capital(s.save):"")+(s.conc?" · Conc.":""));
+        rows+=row(s.name,"Cantrip",s.range||"—",hit,die+" "+(s.dmgType||""),(s.save?"Save: "+capital(s.save):"")+(s.conc?" · Conc.":""),
+                  state.className+" cantrip — "+sourceName(s.source));
       });
       state.spells.spells.forEach(function(k){  // leveled damage/attack spells
         var s=spellByKey(k);if(!s||!s.dmg||(!s.atk&&!s.save))return;
         var hit=s.atk?modStr(spAtk):"DC "+spDC;
-        rows+=row(s.name,ordinal(s.level)+"-level spell",s.range||"—",hit,s.dmg+" "+(s.dmgType||""),(s.save?"Save: "+capital(s.save):"")+(s.conc?" · Conc.":""));
+        rows+=row(s.name,ordinal(s.level)+"-level spell",s.range||"—",hit,s.dmg+" "+(s.dmgType||""),(s.save?"Save: "+capital(s.save):"")+(s.conc?" · Conc.":""),
+                  state.className+" spell — "+sourceName(s.source));
       });
     }
     // attacks per action (Extra Attack)
