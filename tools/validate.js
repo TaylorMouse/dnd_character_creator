@@ -51,7 +51,9 @@ app=app.replace("populateLevels();showEdition();",
  "actionEconomy:actionEconomy,classSpellList:classSpellList,SKILL_ABILITY:SKILL_ABILITY,"+
  "ABILITIES:ABILITIES,maxSpellLevel:maxSpellLevel,speedInfo:speedInfo,"+
  "needsCustomAsi:needsCustomAsi,currentRace:currentRace,currentLineage:currentLineage,"+
- "featAsiPicks:featAsiPicks,featAsiPending:featAsiPending,asiResolved:asiResolved};");
+ "featAsiPicks:featAsiPicks,featAsiPending:featAsiPending,asiResolved:asiResolved,"+
+ "featureAttacks:featureAttacks,featureSkillChoice:featureSkillChoice,featureSkillPicks:featureSkillPicks,"+
+ "featuresAndTraits:featuresAndTraits};");
 eval(app);
 var C=window.__cc,S=C.state;
 
@@ -332,6 +334,40 @@ for(var fi2=0;fi2<FL.length;fi2++){
 }
 checkTrue("  feats declaring an increase are plentiful",withAb>150);
 check("  none have an unusable ability shape",broken,0);
+
+
+// =====================================================================
+section("7f. Feature sub-option attacks, feature skill choices, optional toggles");
+setup("barbarian-classic","Barbarian",6);
+S.subclassName="Path of the Beast";
+var fa=C.featureAttacks(),got={};
+for(var q=0;q<fa.length;q++)got[fa[q].name]=fa[q];
+checkTrue("  Form of the Beast: Bite is an attack",!!got["Bite"]);
+checkTrue("  ...Claws too",!!got["Claws"]);
+checkTrue("  ...Tail too",!!got["Tail"]);
+if(got["Bite"]) check("  Bite damage",got["Bite"].dmg+" "+got["Bite"].dmgType,"1d8 piercing");
+if(got["Claws"])check("  Claws damage",got["Claws"].dmg+" "+got["Claws"].dmgType,"1d6 slashing");
+if(got["Tail"]) checkTrue("  Tail has reach",got["Tail"].reach);
+// feature-granted skill choice (Primal Knowledge, optional TCE)
+var pk=null,ft=C.featuresAndTraits();
+for(var q2=0;q2<ft.length;q2++)if(ft[q2].name==="Primal Knowledge")pk=ft[q2];
+checkTrue("  Primal Knowledge is present",!!pk);
+if(pk){
+  var ch=C.featureSkillChoice(pk);
+  check("  it grants 1 skill at level 6",ch.count,1);
+  check("  from the barbarian list",ch.pool.length,6);
+  S.choices[ch.key+":0"]="Survival";
+  checkTrue("  the pick becomes a proficiency",!!C.proficientSkills()["Survival"]);
+  S.level=10;check("  a second pick at level 10",C.featureSkillChoice(pk).count,2);S.level=6;
+  // optional features can be switched off
+  S.choices["optOff:Primal Knowledge@3"]="1";
+  var still=false,ft2=C.featuresAndTraits();
+  for(var q3=0;q3<ft2.length;q3++)if(ft2[q3].name==="Primal Knowledge")still=true;
+  checkTrue("  switching it off removes it",!still);
+  checkTrue("  ...and drops its skill",!C.proficientSkills()["Survival"]);
+  delete S.choices["optOff:Primal Knowledge@3"];
+  checkTrue("  switching it back on restores it",!!C.proficientSkills()["Survival"]);
+}
 
 // =====================================================================
 section("8. Data integrity");

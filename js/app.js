@@ -489,6 +489,55 @@
     return h;
   }
 
+  /* ---------- skill proficiencies granted by a feature ----------
+     e.g. Primal Knowledge: "proficiency in one skill of your choice from the list of
+     skills available to barbarians at 1st level", and again at 10th level. */
+  var NUMWORD={a:1,one:1,two:2,three:3};
+  function featureSkillChoice(f){
+    var txt=entryText(f.entries||"");
+    var m=/proficiency (?:in|with) (a|one|two|three) (?:skill|of the following skills)/i.exec(txt);
+    if(!m)return null;
+    var count=NUMWORD[m[1].toLowerCase()]||1;
+    var again=/again at (\d+)(?:st|nd|rd|th) level/i.exec(txt);
+    if(again&&state.level>=parseInt(again[1],10))count+=1;
+    var pool=ALL_SKILLS,fd=state.fdata;
+    if(/list of skills available to/i.test(txt)&&fd&&fd.proficiencies&&fd.proficiencies.skills){
+      pool=fd.proficiencies.skills.from;
+    }else{
+      var listed=[];
+      for(var i=0;i<ALL_SKILLS.length;i++){
+        if(txt.toLowerCase().indexOf(ALL_SKILLS[i].toLowerCase())>=0)listed.push(ALL_SKILLS[i]);
+      }
+      if(listed.length>=2)pool=listed;
+    }
+    return {count:count,pool:pool,key:"featskill:"+f.name};
+  }
+  function featureSkillPicks(){
+    var out=[],seen={};
+    featuresAndTraits().forEach(function(f){
+      if(seen[f.name])return;
+      var c=featureSkillChoice(f);if(!c)return;
+      seen[f.name]=1;
+      for(var i=0;i<c.count;i++){var v=state.choices[c.key+":"+i];if(v)out.push(v);}
+    });
+    return out;
+  }
+  function featureSkillHtml(f){
+    var c=featureSkillChoice(f);
+    if(!c)return {html:"",count:0,pending:false};
+    var picked=0,html='<div class="origin-picker"><label>Skill proficiency from '+esc(f.name)+"</label>";
+    for(var i=0;i<c.count;i++){
+      var cur=state.choices[c.key+":"+i]||"";if(cur)picked++;
+      var others=[];
+      for(var j=0;j<c.count;j++){if(j!==i){var v=state.choices[c.key+":"+j];if(v)others.push(v);}}
+      html+='<select class="feat-skill" data-key="'+esc(c.key)+'" data-idx="'+i+'"><option value="">- Choose a skill -</option>'+
+        c.pool.map(function(s){
+          return '<option value="'+esc(s)+'"'+(others.indexOf(s)>=0?" disabled":"")+(cur===s?" selected":"")+">"+esc(s)+"</option>";
+        }).join("")+"</select>";
+    }
+    return {html:html+"</div>",count:c.count,pending:picked<c.count};
+  }
+
   function stripOptions(entries){return (entries||[]).filter(function(e){return !(e&&typeof e==="object"&&e.type==="options");});}
 
   function renderFeatures(){
@@ -515,6 +564,7 @@
     var seenChoice={},pickerShown=false;
     shown.forEach(function(f){
       var levelLabel=ordinal(f.level)+" level",key=f.name+"@"+f.level+(f.isSub?":s":"");
+      var enabled=optEnabled(f);
       var badge=f.optional
         ?'<span class="badge" title="Optional feature from '+esc(sourceName(f.source))+'">OPTIONAL &#183; '+esc(f.source)+'</span>'
         :(f.isSub?'<span class="badge sub" title="'+esc(state.subclassName)+' — from '+esc(sourceName(f.source))+'">'+esc(state.subclassName)+'</span>':"");
@@ -533,6 +583,8 @@
         }
       }else{
         body=(f.entries||[]).map(renderEntry).join("");
+        var fsk=featureSkillHtml(f);
+        if(fsk.count){body+=fsk.html;choicesN=fsk.count;if(fsk.pending)pending=true;}
         if(f.isSub){
           var tc=tableChoiceCfg(fd.name,chosen&&chosen.shortName,f.name);
           if(tc){var res=tableChoiceHtml(f,tc);body+=res.html;choicesN=res.choicesN;pending=res.pending;}
@@ -542,6 +594,11 @@
         pickerShown=true;body+=originPickerHtml(fd);choicesN=1;pending=!state.subclassName;
       }else if(f.gain&&fd.subclasses.length&&!state.subclassName&&f.level>subChoiceLevel){
         body+='<p class="need-choice">Choose your subclass at '+ordinal(subChoiceLevel)+' level (above) to see this feature.</p>';
+      }
+      if(f.optional){
+        body='<label class="opt-toggle"><input type="checkbox" class="opt-chk" data-key="'+esc(optKey(f))+'"'+(enabled?" checked":"")+
+             "> Use this optional feature</label>"+(enabled?body:"");
+        if(!enabled){choicesN=0;pending=false;}
       }
       panels.push(panelHtml(f.name,levelLabel,choicesN,badge,body,key,pending));
     });
@@ -565,6 +622,21 @@
     Array.prototype.forEach.call($("featureList").querySelectorAll(".asi-feat"),function(sel){
       sel.addEventListener("click",function(e){e.stopPropagation();});
       sel.addEventListener("change",function(e){var lv=sel.getAttribute("data-level");state.choices["asi:"+lv+":feat"]=e.target.value||"";for(var q=0;q<4;q++)delete state.choices["asi:"+lv+":featab"+q];render();});
+    });
+    Array.prototype.forEach.call($("featureList").querySelectorAll(".opt-chk"),function(cb){
+      cb.addEventListener("click",function(e){e.stopPropagation();});
+      cb.addEventListener("change",function(){
+        var k=cb.getAttribute("data-key");
+        if(cb.checked)delete state.choices[k];else state.choices[k]="1";
+        render();
+      });
+    });
+    Array.prototype.forEach.call($("featureList").querySelectorAll(".feat-skill"),function(sel){
+      sel.addEventListener("click",function(e){e.stopPropagation();});
+      sel.addEventListener("change",function(e){
+        state.choices[sel.getAttribute("data-key")+":"+sel.getAttribute("data-idx")]=e.target.value||"";
+        render();
+      });
     });
     Array.prototype.forEach.call($("featureList").querySelectorAll(".asi-featab"),function(sel){
       sel.addEventListener("click",function(e){e.stopPropagation();});
@@ -1466,6 +1538,7 @@
     if(bg&&bg.skills){(bg.skills.fixed||[]).forEach(add);
       if(bg.skills.choose)for(var i=0;i<bg.skills.choose.count;i++)add(state.bgChoices["skillChoose:"+i]);
       if(bg.skills.any)for(var i=0;i<bg.skills.any;i++)add(state.bgChoices["skillAny:"+i]);}
+    featureSkillPicks().forEach(add);
     var race=currentRace();
     if(race&&race.skills){(race.skills.fixed||[]).forEach(add);
       if(race.skills.choose)for(var i=0;i<race.skills.choose.count;i++)add(state.raceChoices["race:skill:"+i]);
@@ -1652,6 +1725,9 @@
     }
     return "";
   }
+  // Optional class features (Tasha's) are opt-in; they default to enabled.
+  function optKey(f){return "optOff:"+f.name+"@"+f.level;}
+  function optEnabled(f){return !f.optional||state.choices[optKey(f)]!=="1";}
   // Every feature/trait the character actually has: race + lineage + class + chosen
   // subclass (up to the current level), with nested feature references expanded.
   function featuresAndTraits(){
@@ -1659,7 +1735,7 @@
     if(race)list=list.concat(race.traits||[]);
     if(lin)list=list.concat(lin.traits||[]);
     if(fd){
-      (fd.classFeatures||[]).forEach(function(f){if(f.level<=state.level)list.push(f);});
+      (fd.classFeatures||[]).forEach(function(f){if(f.level<=state.level&&optEnabled(f))list.push(f);});
       var chosen=state.subclassName?(fd.subclasses||[]).filter(function(s){return s.name===state.subclassName;})[0]:null;
       if(chosen)(chosen.features||[]).forEach(function(f){if(f.level<=state.level)list.push(f);});
     }
@@ -1695,6 +1771,26 @@
     return out;
   }
   function dmgAbbr(c){return {P:"piercing",S:"slashing",B:"bludgeoning"}[c]||c||"";}
+  // Attacks granted by a feature's sub-options, e.g. Path of the Beast's Bite / Claws / Tail.
+  function featureAttacks(){
+    var out=[],seen={};
+    featuresAndTraits().forEach(function(f){
+      (f.entries||[]).forEach(function(e){
+        if(!e||typeof e!=="object"||e.type!=="list")return;
+        (e.items||[]).forEach(function(it){
+          if(!it||typeof it!=="object"||!it.name)return;
+          var txt=entryText(it.entries||it.entry||"");
+          var m=/(\d+d\d+)\}?\s*(acid|bludgeoning|cold|fire|force|lightning|necrotic|piercing|poison|psychic|radiant|slashing|thunder)\s*damage/i.exec(txt);
+          if(!m)return;
+          var key=f.name+":"+it.name;
+          if(seen[key])return;seen[key]=1;
+          out.push({name:it.name,parent:f.name,dmg:m[1],dmgType:m[2].toLowerCase(),
+                    reach:/reach/i.test(txt),finesse:/finesse/i.test(txt)});
+        });
+      });
+    });
+    return out;
+  }
   function scaledDie(sc,L){var best="",bl=-1;for(var k in sc){var n=+k;if(n<=L&&n>bl){bl=n;best=sc[k];}}return best;}
   function capital(s){return s?s.charAt(0).toUpperCase()+s.slice(1):"";}
   function actionsCardHtml(){
@@ -1719,6 +1815,11 @@
       rows+=row(w.name,w.wtype==="R"?"Ranged Weapon":"Melee Weapon",range,modStr(mod+prof),dstr,notes);
     });
     rows+=row("Unarmed Strike","Melee","5 ft.",modStr(strM+prof),Math.max(1,1+strM)+" bludgeoning","");   // unarmed damage is always at least 1
+    featureAttacks().forEach(function(a){                 // e.g. Bite / Claws / Tail from Form of the Beast
+      var mod=a.finesse?Math.max(strM,dexM):strM;
+      rows+=row(a.name,a.parent,a.reach?"10 ft. (reach)":"5 ft.",modStr(mod+prof),
+                a.dmg+(mod>0?"+"+mod:(mod<0?""+mod:""))+" "+a.dmgType,a.reach?"Reach":"");
+    });
     if(info){
       state.spells.cantrips.forEach(function(k){
         var s=spellByKey(k);if(!s||!s.scaling)return;

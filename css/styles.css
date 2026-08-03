@@ -137,6 +137,9 @@ blockquote.ent{border-left:3px solid var(--line2);margin:0 0 12px;padding:2px 12
 .origin-picker label{display:block;font-size:12px;font-weight:700;margin-bottom:6px}
 .origin-picker select{margin-bottom:8px}
 .choice-desc{font-size:13px;color:#444;background:#faf8f3;border:1px solid var(--line2);border-radius:6px;padding:8px 10px;margin:-2px 0 10px}
+.opt-toggle{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--accent2);margin:0 0 10px;cursor:pointer}
+.opt-toggle input{margin:0;cursor:pointer}
+body.dark .opt-toggle{color:tomato}
 .prof-line{margin:0 0 6px}
 .prof-line b{font-weight:700}
 .need-choice{color:var(--accent);font-weight:700;font-size:12px;margin-left:6px}
