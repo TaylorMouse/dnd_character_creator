@@ -1280,13 +1280,28 @@
     if(typeof e==="object"){var s="",k;for(k in e){if(k==="type"||k==="name"||k==="source")continue;s+=entryText(e[k]);}return s;}
     return "";
   }
+  // Text used to classify a feature's action economy. Skips "choose one of these"
+  // sub-option menus (lists/items/options): a reaction buried in one optional
+  // sub-choice must not label the whole parent feature a Reaction.
+  function actionText(e){
+    if(typeof e==="string")return e+" ";
+    if(!e)return "";
+    if(e instanceof Array){var s="",i;for(i=0;i<e.length;i++)s+=actionText(e[i]);return s;}
+    if(typeof e==="object"){
+      var t=e.type;
+      if(t==="list"||t==="item"||t==="options")return "";
+      var s="",k;for(k in e){if(k==="type"||k==="name"||k==="source")continue;s+=actionText(e[k]);}
+      return s;
+    }
+    return "";
+  }
   // classify features/traits (+ racial bonus-action spells) by action economy; keep entries for descriptions
   function actionEconomy(){
     var out={action:[],bonus:[],reaction:[]},seen={};
     function push(list,key,it){if(seen[key])return;seen[key]=1;list.push({name:it.name,entries:it.entries||[]});}
     // a feature can belong to several buckets (e.g. Storm Guide: an action AND a bonus action)
     function classify(t){
-      var txt=entryText(t.entries||"").toLowerCase();
+      var txt=actionText(t.entries||"").toLowerCase();
       if(/\b(?:an|your) action\b/.test(txt))push(out.action,"a"+t.name,t);
       if(txt.indexOf("bonus action")>=0)push(out.bonus,"b"+t.name,t);
       if(txt.indexOf("as a reaction")>=0||txt.indexOf("your reaction")>=0)push(out.reaction,"r"+t.name,t);
