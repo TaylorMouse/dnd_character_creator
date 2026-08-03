@@ -49,6 +49,7 @@ def slim(it):
         if it.get("property"): o["props"]=[propcode(x) for x in it["property"]]
     if it.get("wondrous"): o["cat"]="Wondrous"
     if it.get("entries"): o["entries"]=it["entries"]
+    if it.get("edition"): o["edition"]=it["edition"]   # base items say 'classic' / 'one'
     ra=it.get("reqAttune")
     if ra: o["attune"]=ra          # True | "optional" | condition string e.g. "by a spellcaster"
     if it.get("bonusWeapon"): o["bonusWeapon"]=it["bonusWeapon"]   # "+1" / "+2" / "+3"

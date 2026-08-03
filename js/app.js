@@ -1,7 +1,7 @@
 (function(){
   "use strict";
   function freshEquipment(){return {mode:"equipment",starting:{},startingAdded:false,inventory:[],currency:{pp:0,gp:0,ep:0,sp:0,cp:0},filterType:"",filterQ:""};}
-  function freshSheet(){return {hpCurrent:null,hpTemp:"",res:{},hpEdited:false,invQ:"",invAdd:"",xp:"",inspiration:false,deathSucc:0,deathFail:0,dark:false,acOther:"",acOverride:""};}
+  function freshSheet(){return {hpCurrent:null,hpTemp:"",res:{},hpEdited:false,invQ:"",invAdd:"",xp:"",inspiration:false,deathSucc:0,deathFail:0,dark:false,acOther:"",acOverride:"",acEditOpen:false};}
   // Single source of truth for a pristine character. Used at start-up and by "start over".
   function freshCharacter(){
     return {edition:null,name:"",className:null,source:null,slug:null,hdFaces:null,level:1,manualHp:null,subclassName:null,fdata:null,choices:{},openPanels:{},
@@ -876,7 +876,16 @@
   /* ---------- equipment ---------- */
   var _itemIndex=null;
   function itemIndex(){if(_itemIndex)return _itemIndex;_itemIndex={};(window.CC_ITEMS||[]).forEach(function(it){var k=it.name.toLowerCase();if(!_itemIndex[k])_itemIndex[k]=it;});return _itemIndex;}
-  function matchItem(name){var idx=itemIndex(),n=name.toLowerCase();if(idx[n])return idx[n];var s=n.replace(/\s*\(.*?\)\s*/g,"").trim();return idx[s]||null;}
+  function matchItem(name){
+    var n=String(name).toLowerCase(),s=n.replace(/\s*\(.*?\)\s*/g,"").trim(),L=window.CC_ITEMS||[],loose=null;
+    for(var i=0;i<L.length;i++){
+      var ln=L[i].name.toLowerCase();
+      if(ln!==n&&ln!==s)continue;
+      if(itemAllowed(L[i]))return L[i];
+      if(!loose)loose=L[i];
+    }
+    return loose;
+  }
   var _itemByKey=null;
   function itemInfo(name,source){if(!_itemByKey){_itemByKey={};(window.CC_ITEMS||[]).forEach(function(it){_itemByKey[it.name+"|"+(it.source||"")]=it;});}return _itemByKey[name+"|"+(source||"")]||null;}
   function addItemObj(it){
@@ -892,6 +901,7 @@
   function baseWeaponsFor(reqs){
     if(!reqs||!reqs.length)return [];
     return (window.CC_ITEMS||[]).filter(function(x){
+      if(!itemAllowed(x))return false;
       if(!x.tags||!x.dmg)return false;
       for(var i=0;i<reqs.length;i++)if(x.tags.indexOf(reqs[i])>=0)return true;
       return false;
@@ -938,6 +948,14 @@
   function currencyGP(){var c=state.equipment.currency;return (c.pp||0)*10+(c.gp||0)+(c.ep||0)*0.5+(c.sp||0)*0.1+(c.cp||0)*0.01;}
 
   /* ---------- armour ---------- */
+  // Core books define an edition; supplements, settings and adventures apply to both.
+  var EDITION_CORE={PHB:"classic",DMG:"classic",XPHB:"one",XDMG:"one"};
+  function itemEdition(it){return it.edition||EDITION_CORE[it.source]||null;}
+  // Keep an item unless it is clearly from the other edition's core books.
+  function itemAllowed(it){
+    var e=itemEdition(it);
+    return !e||!state.edition||e===state.edition;
+  }
   function findItemByName(nm){var L=window.CC_ITEMS||[];for(var i=0;i<L.length;i++)if(L[i].name===nm)return L[i];return null;}
   // an Armor-category item without an armorKind is a magic variant that needs a base (e.g. "+1 Armor")
   function isVariantArmor(it){
@@ -949,6 +967,7 @@
     var info=itemInfo(it.name,it.source)||{},reqs=it.requires||info.requires||[];
     var wantShield=(reqs.indexOf("shield")>=0)||/shield/i.test(it.name);
     return (window.CC_ITEMS||[]).filter(function(x){
+      if(!itemAllowed(x))return false;
       if(!x.armorKind)return false;
       return wantShield?(x.armorKind==="shield"):(x.armorKind!=="shield");
     }).sort(function(a,b){return a.name.localeCompare(b.name);});
@@ -1101,6 +1120,7 @@
   function renderItemResults(){
     var eq=state.equipment,q=(eq.filterQ||"").toLowerCase();
     var list=(window.CC_ITEMS||[]).filter(function(it){
+      if(!itemAllowed(it))return false;                 // hide the other edition's core items
       if(eq.filterType&&it.cat!==eq.filterType)return false;
       if(q&&it.name.toLowerCase().indexOf(q)<0)return false;
       return true;
@@ -1557,7 +1577,7 @@
     var box=$("invResults");if(!box)return;
     var q=(state.sheet.invQ||"").toLowerCase();
     if(!q){box.innerHTML="";return;}
-    var full=(window.CC_ITEMS||[]).filter(function(it){return it.name.toLowerCase().indexOf(q)>=0;});
+    var full=(window.CC_ITEMS||[]).filter(function(it){return itemAllowed(it)&&it.name.toLowerCase().indexOf(q)>=0;});
     var list=full.slice(0,150);
     var html=list.length?list.map(function(it){
       var hasDesc=it.entries&&it.entries.length;
@@ -1589,11 +1609,13 @@
       '<div class="top-stat sheet-hp"><div class="tv"><input type="number" id="hpCur" value="'+esc(state.sheet.hpCurrent)+'"> / '+(mhp==null?"—":mhp)+'</div><div class="tl">Hit Points</div></div>'+
       '<div class="top-stat"><div class="tv"><input type="number" id="hpTemp" class="stat-inp" value="'+esc(state.sheet.hpTemp||"")+'"></div><div class="tl">Temp HP</div></div>'+
       '<div class="top-stat"><div class="tv"><input type="number" id="xpInput" class="stat-inp xp-inp" value="'+esc(state.sheet.xp||"")+'"></div><div class="tl">XP</div></div></div></div>'+
-      '<div class="ac-edit hidden" id="acEditRow">'+
+      '<div class="ac-edit'+(state.sheet.acEditOpen?"":" hidden")+'" id="acEditRow">'+
         '<span class="ac-edit-lbl">Customise Armor Class</span>'+
         '<label>Other modifier <input type="number" id="acOther" value="'+esc(state.sheet.acOther||"")+'" placeholder="0"></label>'+
         '<label>Override total <input type="number" id="acOverride" value="'+esc(state.sheet.acOverride||"")+'" placeholder="auto"></label>'+
+        '<button class="btn" id="acApply">Apply</button>'+
         '<button class="btn ghost" id="acReset">Reset</button>'+
+        '<button class="btn ghost" id="acClose">Close</button>'+
         '<span class="res-sub" id="acWhy">'+esc(acBreakdown())+'</span>'+
       '</div>';
 
@@ -1723,13 +1745,27 @@
     var ht=host.querySelector("#hpTemp");if(ht)ht.addEventListener("input",function(){state.sheet.hpTemp=ht.value;});
     var xp=host.querySelector("#xpInput");if(xp)xp.addEventListener("input",function(){state.sheet.xp=xp.value;});
     var acS=host.querySelector("#acStat"),acRow=host.querySelector("#acEditRow");
-    if(acS&&acRow)acS.addEventListener("click",function(){acRow.classList.toggle("hidden");});
-    var acO=host.querySelector("#acOther");
-    if(acO)acO.addEventListener("change",function(){state.sheet.acOther=acO.value;render();});
-    var acV=host.querySelector("#acOverride");
-    if(acV)acV.addEventListener("change",function(){state.sheet.acOverride=acV.value;render();});
+    if(acS&&acRow)acS.addEventListener("click",function(){
+      state.sheet.acEditOpen=!state.sheet.acEditOpen;
+      acRow.classList.toggle("hidden",!state.sheet.acEditOpen);
+    });
+    var acO=host.querySelector("#acOther"),acV=host.querySelector("#acOverride");
+    function stash(){                                  // record without re-rendering
+      if(acO)state.sheet.acOther=acO.value;
+      if(acV)state.sheet.acOverride=acV.value;
+    }
+    function apply(){stash();state.sheet.acEditOpen=true;render();}
+    if(acO)acO.addEventListener("input",stash);
+    if(acV)acV.addEventListener("input",stash);
+    function onEnter(e){if(e.keyCode===13){e.preventDefault();apply();}}
+    if(acO)acO.addEventListener("keydown",onEnter);
+    if(acV)acV.addEventListener("keydown",onEnter);
+    var acA=host.querySelector("#acApply");
+    if(acA)acA.addEventListener("click",apply);
     var acR=host.querySelector("#acReset");
-    if(acR)acR.addEventListener("click",function(){state.sheet.acOther="";state.sheet.acOverride="";render();});
+    if(acR)acR.addEventListener("click",function(){state.sheet.acOther="";state.sheet.acOverride="";state.sheet.acEditOpen=true;render();});
+    var acC=host.querySelector("#acClose");
+    if(acC)acC.addEventListener("click",function(){stash();state.sheet.acEditOpen=false;render();});
     var lr=host.querySelector("#longRest");if(lr)lr.addEventListener("click",longRest);
     var sr=host.querySelector("#shortRest");if(sr)sr.addEventListener("click",shortRest);
     var ib=host.querySelector("#inspBox");if(ib)ib.addEventListener("click",function(){state.sheet.inspiration=!state.sheet.inspiration;render();});
