@@ -1,7 +1,7 @@
 (function(){
   "use strict";
   function freshEquipment(){return {mode:"equipment",starting:{},startingAdded:false,inventory:[],currency:{pp:0,gp:0,ep:0,sp:0,cp:0},filterType:"",filterQ:""};}
-  function freshSheet(){return {hpCurrent:null,hpTemp:"",res:{},hpEdited:false,invQ:"",invAdd:"",xp:"",inspiration:false,deathSucc:0,deathFail:0,dark:false};}
+  function freshSheet(){return {hpCurrent:null,hpTemp:"",res:{},hpEdited:false,invQ:"",invAdd:"",xp:"",inspiration:false,deathSucc:0,deathFail:0,dark:false,acOther:"",acOverride:""};}
   // Single source of truth for a pristine character. Used at start-up and by "start over".
   function freshCharacter(){
     return {edition:null,name:"",className:null,source:null,slug:null,hdFaces:null,level:1,manualHp:null,subclassName:null,fdata:null,choices:{},openPanels:{},
@@ -1018,12 +1018,21 @@
     opts.forEach(function(o){if(o.total>best.total)best=o;});
     var finalParts=best.parts.slice(),total=best.total;
     if(shieldBonus){finalParts.push([shield.name,shieldBonus]);total+=shieldBonus;}
+    var other=parseInt(state.sheet.acOther,10)||0;
+    if(other){finalParts.push(["Other",other]);total+=other;}
+    var ov=state.sheet.acOverride;
+    if(ov!==""&&ov!=null&&!isNaN(parseInt(ov,10))){
+      var o2=parseInt(ov,10);
+      return {total:o2,label:"Manual override",parts:[["Override",o2]],computed:total,overridden:true};
+    }
     return {total:total,label:best.label,parts:finalParts};
   }
   function computeAC(){return acInfo().total;}
   function acBreakdown(){
     var i=acInfo();
-    return i.parts.map(function(p){return p[0]+" "+(p[1]>=0&&p[0]!==i.label?"+":"")+p[1];}).join("  ")+"  =  "+i.total;
+    var s=i.parts.map(function(p){return p[0]+" "+(p[1]>=0&&p[0]!==i.label?"+":"")+p[1];}).join("  ")+"  =  "+i.total;
+    if(i.overridden)s+="   (calculated value would be "+i.computed+")";
+    return s+"   — click to customise";
   }
 
   function renderEquipment(){renderStarting();renderItemBrowser();renderCurrency();renderInventory();}
@@ -1331,6 +1340,11 @@
     return out;
   }
   function shCard(title,body){return body?'<div class="sheet-card"><h3>'+esc(title)+'</h3><div class="cbody">'+body+"</div></div>":"";}
+  function acStatHtml(ac){
+    var i=acInfo(),custom=i.overridden||(parseInt(state.sheet.acOther,10)||0);
+    return '<div class="top-stat has-why ac-stat'+(custom?" ac-custom":"")+'" id="acStat" title="Armor Class: '+esc(acBreakdown())+'">'+
+      '<div class="tv">'+ac+(custom?' <span class="ac-mark">&#9998;</span>':"")+'</div><div class="tl">Armor Class</div></div>';
+  }
   function topStat(v,l,why){
     return '<div class="top-stat'+(why?" has-why":"")+'"'+(why?' title="'+esc(why)+'"':"")+'>'+
       '<div class="tv">'+v+'</div><div class="tl">'+esc(l)+"</div></div>";
@@ -1570,11 +1584,18 @@
     var sub=((race?race.name+(lin?" ("+lin.name+")":""):"")+" "+state.className+" "+state.level).trim();
 
     var html='<div class="sheet-head"><div class="sheet-portrait" id="sheetPortrait">'+(state.portrait?'<img src="'+state.portrait+'">':"&#9670;")+'</div><div><div class="sheet-name">'+esc(state.name||"Unnamed")+'</div><div class="sheet-sub">'+esc(sub)+"</div></div>"+
-      '<div class="sheet-top">'+topStat("+"+prof,"Prof Bonus",profWhy())+topStat(esc(race&&race.speed?race.speed:"30 ft."),"Speed",speedWhy())+topStat(modStr(init),"Initiative",initWhy())+topStat(ac,"Armor Class","Armor Class: "+acBreakdown())+
+      '<div class="sheet-top">'+topStat("+"+prof,"Prof Bonus",profWhy())+topStat(esc(race&&race.speed?race.speed:"30 ft."),"Speed",speedWhy())+topStat(modStr(init),"Initiative",initWhy())+acStatHtml(ac)+
       '<div class="top-stat insp-box" id="inspBox"><div class="tv">'+(state.sheet.inspiration?"&#9733;":"&#9734;")+'</div><div class="tl">Inspiration</div></div>'+
       '<div class="top-stat sheet-hp"><div class="tv"><input type="number" id="hpCur" value="'+esc(state.sheet.hpCurrent)+'"> / '+(mhp==null?"—":mhp)+'</div><div class="tl">Hit Points</div></div>'+
       '<div class="top-stat"><div class="tv"><input type="number" id="hpTemp" class="stat-inp" value="'+esc(state.sheet.hpTemp||"")+'"></div><div class="tl">Temp HP</div></div>'+
-      '<div class="top-stat"><div class="tv"><input type="number" id="xpInput" class="stat-inp xp-inp" value="'+esc(state.sheet.xp||"")+'"></div><div class="tl">XP</div></div></div></div>';
+      '<div class="top-stat"><div class="tv"><input type="number" id="xpInput" class="stat-inp xp-inp" value="'+esc(state.sheet.xp||"")+'"></div><div class="tl">XP</div></div></div></div>'+
+      '<div class="ac-edit hidden" id="acEditRow">'+
+        '<span class="ac-edit-lbl">Customise Armor Class</span>'+
+        '<label>Other modifier <input type="number" id="acOther" value="'+esc(state.sheet.acOther||"")+'" placeholder="0"></label>'+
+        '<label>Override total <input type="number" id="acOverride" value="'+esc(state.sheet.acOverride||"")+'" placeholder="auto"></label>'+
+        '<button class="btn ghost" id="acReset">Reset</button>'+
+        '<span class="res-sub" id="acWhy">'+esc(acBreakdown())+'</span>'+
+      '</div>';
 
     // LEFT
     var abilCells=ABILITIES.map(function(a){var t=totalScore(a);return '<div class="abil-cell"><div class="aname">'+ABIL_ABBR[a]+'</div><div class="amod">'+modStr(abMod(t))+'</div><div class="ascore">'+t+"</div></div>";}).join("");
@@ -1625,6 +1646,14 @@
     var cCur=shCard("Currency",curBody);
     // inventory (editable + attunement) — drop stale attunements on items that can't be attuned
     inv.forEach(function(it){if(it.attuned&&!itemAttune(it))it.attuned=false;});
+    // only one body armour can be worn at a time; drop extras (e.g. from an older save)
+    var wornBody=false;
+    inv.forEach(function(it){
+      if(!it.equipped)return;
+      var a=resolveArmor(it);
+      if(!a||a.armorKind==="shield")return;
+      if(wornBody)it.equipped=false;else wornBody=true;
+    });
     var invBody='<div class="res-sub" style="margin-bottom:8px">Attunement: <b>'+attunedCount()+' / 3</b></div>';
     if(inv.length){
       invBody+=inv.map(function(it,i){
@@ -1693,6 +1722,14 @@
     var hc=host.querySelector("#hpCur");if(hc)hc.addEventListener("input",function(){state.sheet.hpEdited=true;state.sheet.hpCurrent=parseInt(hc.value,10)||0;});
     var ht=host.querySelector("#hpTemp");if(ht)ht.addEventListener("input",function(){state.sheet.hpTemp=ht.value;});
     var xp=host.querySelector("#xpInput");if(xp)xp.addEventListener("input",function(){state.sheet.xp=xp.value;});
+    var acS=host.querySelector("#acStat"),acRow=host.querySelector("#acEditRow");
+    if(acS&&acRow)acS.addEventListener("click",function(){acRow.classList.toggle("hidden");});
+    var acO=host.querySelector("#acOther");
+    if(acO)acO.addEventListener("change",function(){state.sheet.acOther=acO.value;render();});
+    var acV=host.querySelector("#acOverride");
+    if(acV)acV.addEventListener("change",function(){state.sheet.acOverride=acV.value;render();});
+    var acR=host.querySelector("#acReset");
+    if(acR)acR.addEventListener("click",function(){state.sheet.acOther="";state.sheet.acOverride="";render();});
     var lr=host.querySelector("#longRest");if(lr)lr.addEventListener("click",longRest);
     var sr=host.querySelector("#shortRest");if(sr)sr.addEventListener("click",shortRest);
     var ib=host.querySelector("#inspBox");if(ib)ib.addEventListener("click",function(){state.sheet.inspiration=!state.sheet.inspiration;render();});

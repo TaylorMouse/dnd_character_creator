@@ -310,6 +310,14 @@ body.dark .sheet-portrait,body.dark .portrait{border-color:#565656}
 .xp-inp{width:104px}
 .top-stat.has-why{cursor:help}
 .top-stat.has-why .tl{border-bottom:1px dotted var(--line2);display:inline-block}
+.ac-stat{cursor:pointer}
+.ac-stat.ac-custom{border-color:var(--accent)}
+.ac-mark{font-size:12px;color:var(--accent);vertical-align:super}
+.ac-edit{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin:10px 0 0;padding:10px 14px;border:1px solid var(--line2);border-radius:10px;background:#fff}
+.ac-edit-lbl{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
+.ac-edit label{font-size:12px;font-weight:700;display:flex;align-items:center;gap:6px}
+.ac-edit input{width:80px;text-align:center;font-weight:800;padding:5px 4px}
+body.dark .ac-edit{background:#262626;border-color:#4a4a4a}
 .sheet-hp{min-width:210px}
 .sheet-hp .tv{font-size:24px;display:flex;align-items:center;justify-content:center;gap:4px}
 .sheet-hp #hpCur{width:104px;font-size:22px;padding:8px 6px}

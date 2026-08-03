@@ -243,6 +243,20 @@ check("  +1 Armor as Plate (18 + 1)",C.computeAC(),19);
 S.equipment.inventory[0].base=null;
 check("  +1 Armor with no base chosen is not worn",C.computeAC(),12);
 
+
+// custom AC: other modifier and override
+setup("barbarian-classic","Barbarian",6);
+check("  Barbarian base unarmoured",C.computeAC(),13);
+S.sheet.acOther="2";  check("  + other modifier 2",C.computeAC(),15);
+S.sheet.acOverride="20"; check("  override wins",C.computeAC(),20);
+S.sheet.acOther="";S.sheet.acOverride=""; check("  reset returns to computed",C.computeAC(),13);
+// armour must never stack with Unarmored Defense
+S.equipment.inventory=[{name:"Leather Armor",cat:"Armor",ac:11,armorKind:"light",qty:1,equipped:true}];
+check("  worn armour ignores Unarmored Defense",C.computeAC(),13);   // 11+Dex2, not 10+2+1+11
+S.equipment.inventory=[{name:"Plate",cat:"Armor",ac:18,armorKind:"heavy",qty:1,equipped:true},
+                       {name:"Leather Armor",cat:"Armor",ac:11,armorKind:"light",qty:1,equipped:true}];
+checkTrue("  two body armours never stack",C.computeAC()<=20);
+
 // =====================================================================
 section("8. Data integrity");
 check("  core class/edition combos",classes.length,26);
