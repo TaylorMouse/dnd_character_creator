@@ -290,7 +290,7 @@ body.dark .qty-badge{color:#fff}
 body.dark .results-note{color:#999}
 body.dark .sheet-portrait,body.dark .portrait{border-color:#565656}
 .sheet-head{display:flex;align-items:center;gap:16px;flex-wrap:wrap;border:1px solid var(--line2);border-radius:12px;background:#fff;padding:14px 18px;margin-bottom:14px;box-shadow:var(--shadow)}
-.sheet-portrait{width:64px;height:64px;border-radius:10px;border:1px solid var(--line2);background:linear-gradient(135deg,#e9e3d7,#d8cfbe);display:flex;align-items:center;justify-content:center;color:#9a8f79;font-size:26px;cursor:pointer;overflow:hidden}
+.sheet-portrait{width:92px;height:92px;flex:0 0 92px;border-radius:12px;border:1px solid var(--line2);background:linear-gradient(135deg,#e9e3d7,#d8cfbe);display:flex;align-items:center;justify-content:center;color:#9a8f79;font-size:34px;cursor:pointer;overflow:hidden}
 .sheet-name{font-size:26px;font-weight:800;line-height:1.1}
 .sheet-sub{color:var(--muted);font-size:14px}
 .sheet-top{margin-left:auto;display:flex;gap:10px;flex-wrap:wrap}
