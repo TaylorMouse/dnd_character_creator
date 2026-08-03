@@ -37,7 +37,7 @@ var ROOT=fso.GetParentFolderName(fso.GetParentFolderName(WScript.ScriptFullName)
 
 // ---------- load data + app ----------
 var dataFiles=["data-classes.js","data-feats.js","data-backgrounds.js","data-races.js",
-               "data-items.js","data-starting.js","data-spells.js","data-spellcasting.js","data-resources.js","data-speed.js"];
+               "data-items.js","data-starting.js","data-spells.js","data-spellcasting.js","data-resources.js","data-speed.js","data-condmods.js"];
 for(var i=0;i<dataFiles.length;i++) eval(readFile(ROOT+"resources\\"+dataFiles[i]));
 // every generated per-class feature file
 var featDir=fso.GetFolder(ROOT+"resources\\features"),fe=new Enumerator(featDir.Files);
@@ -53,7 +53,7 @@ app=app.replace("populateLevels();showEdition();",
  "needsCustomAsi:needsCustomAsi,currentRace:currentRace,currentLineage:currentLineage,"+
  "featAsiPicks:featAsiPicks,featAsiPending:featAsiPending,asiResolved:asiResolved,"+
  "featureAttacks:featureAttacks,featureSkillChoice:featureSkillChoice,featureSkillPicks:featureSkillPicks,"+
- "featuresAndTraits:featuresAndTraits};");
+ "featuresAndTraits:featuresAndTraits,condNotesFor:condNotesFor};");
 eval(app);
 var C=window.__cc,S=C.state;
 
@@ -401,6 +401,28 @@ var ft3=C.featuresAndTraits(),fey=null;
 for(var i=0;i<ft3.length;i++)if(ft3[i].name==="Fey Step")fey=ft3[i];
 checkTrue("  Fey Step found on the Eladrin lineage",!!fey);
 if(fey)check("  origin does not repeat the book",fey._origin.indexOf("(MTF) (MTF)"),-1);
+
+
+// =====================================================================
+section("7h. Conditional damage notes (rage, sneak attack, martial arts)");
+function noteStr(kind){return C.condNotesFor(kind).join(" | ");}
+setup("barbarian-classic","Barbarian",6);
+checkTrue("  Barbarian 6 melee Str: +2 while raging",noteStr({melee:true,str:true}).indexOf("+2 while raging")>=0);
+check("  ...not on a ranged attack",noteStr({ranged:true}),"");
+setup("barbarian-classic","Barbarian",9);
+checkTrue("  Barbarian 9 rages for +3",noteStr({melee:true,str:true}).indexOf("+3 while raging")>=0);
+setup("barbarian-classic","Barbarian",17);
+checkTrue("  Barbarian 17 rages for +4",noteStr({melee:true,str:true}).indexOf("+4 while raging")>=0);
+setup("rogue-classic","Rogue",6);
+checkTrue("  Rogue 6 finesse: +3d6 Sneak Attack",noteStr({melee:true,finesse:true}).indexOf("3d6")>=0);
+checkTrue("  ...also on ranged",noteStr({ranged:true}).indexOf("3d6")>=0);
+check("  ...but not on a non-finesse melee weapon",noteStr({melee:true,str:true}),"");
+setup("monk-classic","Monk",6);
+checkTrue("  Monk 6 unarmed: Martial Arts die 1d6",noteStr({melee:true,unarmed:true}).indexOf("1d6")>=0);
+setup("monk-classic","Monk",17);
+checkTrue("  Monk 17 uses 1d10",noteStr({melee:true,unarmed:true}).indexOf("1d10")>=0);
+setup("fighter-classic","Fighter",6);
+check("  a class with none gets no notes",noteStr({melee:true,str:true,finesse:true,unarmed:true}),"");
 
 // =====================================================================
 section("8. Data integrity");

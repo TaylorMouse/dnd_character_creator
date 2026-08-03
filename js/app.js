@@ -1780,6 +1780,26 @@
     rsp.forEach(function(sp){var s=spellByName(sp.name);if(s&&s.time&&s.time.indexOf("bonus")>=0){var c={};for(var kk in s)c[kk]=s[kk];c._origin=(race?race.name:"species")+" — innate spell";push(out.bonus,"b"+s.name,c);}});
     return out;
   }
+  /* ---------- conditional damage ----------
+     Rage damage, Sneak Attack and the Martial Arts die are situational, so they are
+     shown as notes on the attacks they can apply to rather than folded into the total. */
+  function condMods(){return (window.CC_CONDMODS&&window.CC_CONDMODS[state.slug])||[];}
+  function condNotesFor(kind){
+    var out=[],lv=state.level-1;
+    condMods().forEach(function(m){
+      var v=m.values[lv];
+      if(v===null||v===undefined||v===0)return;
+      if(m.kind==="rage"&&kind.melee&&kind.str)out.push("+"+v+" while raging");
+      if(m.kind==="sneak"&&(kind.finesse||kind.ranged))out.push("+"+v+" Sneak Attack (1/turn)");
+      if(m.kind==="martialArts"&&(kind.unarmed||kind.monkWeapon))out.push("Martial Arts die "+v);
+    });
+    return out;
+  }
+  function withCond(notes,kind){
+    var c=condNotesFor(kind);
+    if(!c.length)return notes;
+    return (notes?notes+" · ":"")+c.join(" · ");
+  }
   function dmgAbbr(c){return {P:"piercing",S:"slashing",B:"bludgeoning"}[c]||c||"";}
   // Attacks granted by a feature's sub-options, e.g. Path of the Beast's Bite / Claws / Tail.
   function featureAttacks(){
@@ -1825,16 +1845,21 @@
       var dstr=w.dmg+(dbonus>0?"+"+dbonus:(dbonus<0?""+dbonus:""))+" "+dmgAbbr(w.dmgType);
       var notes=props.join(", ");
       if(w.bonus)notes=(notes?notes+" · ":"")+"magic +"+w.bonus;
+      var melee=w.wtype!=="R",usesStr=melee&&(!finesse||strM>=dexM);
+      var monkW=melee&&w.weaponCat!=="martial"&&props.indexOf("Two-Handed")<0&&props.indexOf("Heavy")<0;
+      notes=withCond(notes,{melee:melee,ranged:!melee,str:usesStr,finesse:finesse,monkWeapon:monkW});
       if(w.att==="optional"&&!it.attuned)notes=(notes?notes+" · ":"")+"not attuned — no magic bonus";
       rows+=row(w.name,w.wtype==="R"?"Ranged Weapon":"Melee Weapon",range,modStr(mod+prof),dstr,notes,
                 "Equipped item"+(it.source?" — "+sourceName(it.source):""));
     });
-    rows+=row("Unarmed Strike","Melee","5 ft.",modStr(strM+prof),Math.max(1,1+strM)+" bludgeoning","",
+    rows+=row("Unarmed Strike","Melee","5 ft.",modStr(strM+prof),Math.max(1,1+strM)+" bludgeoning",
+              withCond("",{melee:true,str:true,unarmed:true}),
               "Available to every character");   // unarmed damage is always at least 1
     featureAttacks().forEach(function(a){                 // e.g. Bite / Claws / Tail from Form of the Beast
       var mod=a.finesse?Math.max(strM,dexM):strM;
       rows+=row(a.name,a.parent,a.reach?"10 ft. (reach)":"5 ft.",modStr(mod+prof),
-                a.dmg+(mod>0?"+"+mod:(mod<0?""+mod:""))+" "+a.dmgType,a.reach?"Reach":"",
+                a.dmg+(mod>0?"+"+mod:(mod<0?""+mod:""))+" "+a.dmgType,
+                withCond(a.reach?"Reach":"",{melee:true,str:!a.finesse||strM>=dexM,finesse:a.finesse,unarmed:true}),
                 a.origin?(a.parent+" — "+a.origin):a.parent);
     });
     if(info){
