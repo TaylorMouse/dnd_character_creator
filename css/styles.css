@@ -22,6 +22,9 @@ body{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--b
 .data-missing pre{background:var(--head);border:1px solid var(--line2);border-radius:8px;padding:10px 12px;font-size:13px;overflow-x:auto}
 .data-missing code{background:var(--head);border-radius:4px;padding:1px 5px;font-size:13px}
 
+/* source abbreviation: hover reveals the full book title */
+.src{cursor:help;border-bottom:1px dotted currentColor}
+
 /* edition screen */
 .edition-hero{text-align:center;padding:34px 0 10px}
 .edition-hero h1{font-size:30px;margin:0 0 6px}

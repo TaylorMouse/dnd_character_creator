@@ -46,7 +46,19 @@
     MOT:"Mythic Odysseys of Theros",VRGR:"Van Richten's Guide to Ravenloft",SCC:"Strixhaven: A Curriculum of Chaos",
     DSotDQ:"Dragonlance: Shadow of the Dragon Queen",
     TDCSR:"Tal'Dorei Campaign Setting Reborn",UA:"Unearthed Arcana"};
-  function sourceName(code){return SOURCE_NAMES[code]?SOURCE_NAMES[code]+" ("+code+")":code;}
+  // Prefer the generated 5etools book list, fall back to the built-in map.
+  function bookTitle(code){
+    if(!code)return "";
+    var g=window.CC_SOURCES&&window.CC_SOURCES[code];
+    return g||SOURCE_NAMES[code]||"";
+  }
+  function sourceName(code){var t=bookTitle(code);return t?t+" ("+code+")":code;}
+  // An abbreviation that reveals the full book title on hover.
+  function srcTag(code){
+    if(!code)return "";
+    var t=bookTitle(code);
+    return '<span class="src"'+(t?' title="'+esc(t)+'"':"")+">"+esc(code)+"</span>";
+  }
   // Subclass features that require picking one row from a table (e.g. which dragon).
   var TABLE_CHOICES=[
     {className:"Sorcerer",sub:"Draconic",feature:"Dragon Ancestor",label:"Draconic Ancestry — choose your dragon",optCol:0,detailCol:1,detailLabel:"Damage type",caption:"Draconic Ancestry"},
@@ -194,7 +206,7 @@
     var core=state.edition==="one"?"XPHB":"PHB";
     var coreList=list.filter(function(b){return b.source===core;});
     var expList=list.filter(function(b){return b.source!==core;});
-    function opt(b){return '<option value="'+esc(b.name+"|"+b.source)+'">'+esc(b.name+(b.source!==core?" ("+b.source+")":""))+"</option>";}
+    function opt(b){return '<option value="'+esc(b.name+"|"+b.source)+'" title="'+esc(sourceName(b.source))+'">'+esc(b.name+(b.source!==core?" ("+b.source+")":""))+"</option>";}
     var html='<option value="">— Choose a background —</option><option value="custom">✎ Custom Background (write your own)…</option>';
     if(coreList.length)html+='<optgroup label="Core">'+coreList.map(opt).join("")+"</optgroup>";
     if(expList.length)html+='<optgroup label="Expanded">'+expList.map(opt).join("")+"</optgroup>";
@@ -233,7 +245,7 @@
     $("featuresWrap").classList.toggle("hidden",!hasClass);
     if(hasClass){
       $("ccName").textContent=state.className;
-      $("ccSub").textContent=state.source+" • d"+state.hdFaces+" hit die";
+      $("ccSub").innerHTML=srcTag(state.source)+" • d"+state.hdFaces+" hit die";
       $("classEmblem").textContent=state.className.charAt(0);
     }
     $("lvlDisplay").textContent=state.level;
@@ -317,7 +329,7 @@
       var opts='<option value="">— Choose —</option>'+pool.map(function(o){
         var val=o.name,dis=others.indexOf(val)>=0?" disabled":"",sel=chosen[i]===val?" selected":"";
         var lbl=o.name+(o.source&&fd&&o.source!==fd.source?" ("+o.source+")":"")+(o.prerequisite?" — "+o.prerequisite:"");
-        return '<option value="'+esc(val)+'"'+dis+sel+'>'+esc(lbl)+"</option>";
+        return '<option value="'+esc(val)+'"'+dis+sel+(o.source?' title="'+esc(sourceName(o.source))+'"':"")+'>'+esc(lbl)+"</option>";
       }).join("");
       body+='<select class="choice-sel" data-group="'+esc(groupKey)+'" data-idx="'+i+'">'+opts+"</select>";
       if(chosen[i]){
@@ -534,7 +546,7 @@
   function originPickerHtml(fd){
     var opts='<option value="">— Choose —</option>'+fd.subclasses.map(function(s){
       var lbl=s.name+(s.source!==fd.source?" ("+s.source+")":"");
-      return '<option value="'+esc(s.name)+'">'+esc(lbl)+"</option>";
+      return '<option value="'+esc(s.name)+'" title="'+esc(sourceName(s.source))+'">'+esc(lbl)+"</option>";
     }).join("");
     return '<div class="origin-picker"><label>Choose your subclass</label><select id="originSelect">'+opts+"</select></div>";
   }
@@ -599,7 +611,7 @@
     var html="";
     if(b.desc)html+='<p class="bg-desc">'+renderTags(b.desc)+"</p>";
     var pr=bgProficienciesHtml(b);
-    html+=panelHtml("Background Proficiencies",b.source,pr.picks,"",pr.html,"bgprof:"+b.name+b.source,pr.pending);
+    html+=panelHtml("Background Proficiencies",srcTag(b.source),pr.picks,"",pr.html,"bgprof:"+b.name+b.source,pr.pending);
     if(b.feats&&b.feats.length)html+='<p class="prof-line" style="margin:12px 0"><b>Origin Feat:</b> '+esc(b.feats.join(", "))+"</p>";
     if(b.feature)html+=panelHtml("Feature: "+b.feature.name,"Background feature",0,"",(b.feature.entries||[]).map(renderEntry).join(""),"bgfeat:"+b.name+b.source,false);
     var sc=(b.entries||[]).filter(function(e){return e&&typeof e==="object"&&/suggested characteristics/i.test(e.name||"");})[0];
@@ -719,7 +731,7 @@
     spellChoices.forEach(function(lbl){s+='<p class="prof-line tag-note">Plus choose '+esc(lbl)+" — pickable in the Spells step (coming later).</p>";});
     if(scAbility){s+=raceSelectHtml("race:scability",scAbility,1,"Spellcasting ability for racial spells");if(raceChoiceCount("race:scability",1)<1)pending=true;}
 
-    var html=panelHtml("Species Traits & Grants",race.source,0,"",s,"race:summary:"+race.name+race.source,pending);
+    var html=panelHtml("Species Traits & Grants",srcTag(race.source),0,"",s,"race:summary:"+race.name+race.source,pending);
 
     if(race.lineages.length){
       var opts='<option value="">— Choose —</option>'+race.lineages.map(function(l){
@@ -1008,12 +1020,12 @@
     var cap=150,shown=list.slice(0,cap);
     var html=shown.map(function(it){
       var att=it.attune?" · "+attuneNote(it.attune):"";
-      var meta=it.cat+(it.rarity&&it.rarity!=="none"?" · "+it.rarity:"")+(it.dmg?" · "+it.dmg+" "+dmgAbbr(it.dmgType):"")+(it.ac?" · AC "+it.ac:"")+att+" · "+it.source;
+      var meta=it.cat+(it.rarity&&it.rarity!=="none"?" · "+it.rarity:"")+(it.dmg?" · "+it.dmg+" "+dmgAbbr(it.dmgType):"")+(it.ac?" · AC "+it.ac:"")+att;
       var hasDesc=it.entries&&it.entries.length;
       var desc=hasDesc?'<div class="inv-desc">'+it.entries.map(renderEntry).join("")+"</div>":"";
       return '<div class="inv-res-item"><div class="item-row"><div class="res-name-click">'+
         '<div class="nm">'+esc(it.name)+rarBadge(it.rarity)+(hasDesc?' <span class="inv-chev">&#9662;</span>':"")+'</div>'+
-        '<div class="meta">'+esc(meta)+'</div></div>'+
+        '<div class="meta">'+esc(meta)+" · "+srcTag(it.source)+'</div></div>'+
         '<button class="add" data-name="'+esc(it.name)+'" data-source="'+esc(it.source)+'">ADD</button></div>'+desc+"</div>";
     }).join("")||'<div class="results-note">No items match.</div>';
     if(list.length>cap)html+='<div class="results-note">Showing '+cap+" of "+list.length+" — refine your search.</div>";
@@ -1056,7 +1068,7 @@
       }
       ctrl+='<button class="rm-btn" data-i="'+i+'" title="Remove">×</button>';
       var desc=hasDesc?'<div class="inv-desc">'+info.entries.map(renderEntry).join("")+"</div>":"";
-      html+='<div class="inv-item'+(hasDesc?" has-desc":"")+'"><div class="inv-row"><div class="inv-main" data-i="'+i+'"><div class="nm">'+esc(it.name)+rarBadge(it.rarity)+(it.generic?' <span class="meta">(no stats)</span>':"")+(hasDesc?' <span class="inv-chev">&#9662;</span>':"")+'</div><div class="meta">'+esc(meta)+'</div></div><div class="ctrl">'+ctrl+"</div></div>"+desc+"</div>";
+      html+='<div class="inv-item'+(hasDesc?" has-desc":"")+'"><div class="inv-row"><div class="inv-main" data-i="'+i+'"><div class="nm">'+esc(it.name)+rarBadge(it.rarity)+(it.generic?' <span class="meta">(no stats)</span>':"")+(hasDesc?' <span class="inv-chev">&#9662;</span>':"")+'</div><div class="meta">'+esc(meta)+(it.source?" · "+srcTag(it.source):"")+'</div></div><div class="ctrl">'+ctrl+"</div></div>"+desc+"</div>";
     });
     $("inventoryPanel").innerHTML=html;
     Array.prototype.forEach.call($("inventoryPanel").querySelectorAll(".inv-qty"),function(inp){inp.addEventListener("change",function(){inv[+inp.getAttribute("data-i")].qty=parseInt(inp.value,10)||1;});});
@@ -1105,9 +1117,9 @@
   function spellByKey(k){if(!_spellIndex){_spellIndex={};(window.CC_SPELLS||[]).forEach(function(s){_spellIndex[spKey(s)]=s;});}return _spellIndex[k];}
   function spRowHtml(s,kind,selArr,disableUnsel){
     var k=spKey(s),sel=selArr.indexOf(k)>=0;
-    var meta=s.school+(s.range?" · "+s.range:"")+(s.comp?" · "+s.comp:"")+(s.conc?" · Conc.":"")+(s.ritual?" · Ritual":"")+" · "+s.source;
+    var meta=s.school+(s.range?" · "+s.range:"")+(s.comp?" · "+s.comp:"")+(s.conc?" · Conc.":"")+(s.ritual?" · Ritual":"");
     return '<div class="sp-row'+(sel?" sel":"")+'"><input type="checkbox" class="sp-chk" data-kind="'+kind+'" data-key="'+esc(k)+'"'+(sel?" checked":"")+((!sel&&disableUnsel)?" disabled":"")+'>'+
-      '<div class="sp-info" data-key="'+esc(k)+'"><div class="nm">'+esc(s.name)+'</div><div class="meta">'+esc(meta)+"</div></div>"+
+      '<div class="sp-info" data-key="'+esc(k)+'"><div class="nm">'+esc(s.name)+'</div><div class="meta">'+esc(meta)+" · "+srcTag(s.source)+"</div></div>"+
       (kind==="spell"?'<span class="lv">'+(s.level===0?"Cantrip":"Lvl "+s.level)+"</span>":"")+"</div>";
   }
   function spellDetailHtml(s){
@@ -1434,7 +1446,7 @@
     var html=list.length?list.map(function(it){
       var hasDesc=it.entries&&it.entries.length;
       var desc=hasDesc?'<div class="inv-desc">'+it.entries.map(renderEntry).join("")+"</div>":"";
-      return '<div class="inv-res-item"><div class="inv-res-row"><span class="res-name-click">'+esc(it.name)+(hasDesc?' <span class="inv-chev">&#9662;</span>':"")+' <span class="meta">'+esc(it.cat+(it.rarity&&it.rarity!=="none"?" · "+it.rarity:"")+" · "+it.source)+'</span></span><button class="add sh-additem" data-name="'+esc(it.name)+'" data-source="'+esc(it.source)+'">ADD</button></div>'+desc+"</div>";
+      return '<div class="inv-res-item"><div class="inv-res-row"><span class="res-name-click">'+esc(it.name)+(hasDesc?' <span class="inv-chev">&#9662;</span>':"")+' <span class="meta">'+esc(it.cat+(it.rarity&&it.rarity!=="none"?" · "+it.rarity:""))+" · "+srcTag(it.source)+'</span></span><button class="add sh-additem" data-name="'+esc(it.name)+'" data-source="'+esc(it.source)+'">ADD</button></div>'+desc+"</div>";
     }).join(""):'<div class="results-note">No matches.</div>';
     if(full.length>list.length)html+='<div class="results-note">Showing '+list.length+' of '+full.length+' — refine your search.</div>';
     box.innerHTML=html;
@@ -1531,7 +1543,7 @@
           basePick='<div class="base-pick">Applies to: <select class="sh-base" data-i="'+i+'"><option value="">— choose a base weapon —</option>'+
             pool.map(function(b){return '<option value="'+esc(b.name)+'"'+(it.base===b.name?" selected":"")+'>'+esc(b.name+" ("+b.dmg+" "+dmgAbbr(b.dmgType)+")")+"</option>";}).join("")+"</select></div>";
         }
-        return '<div class="inv-item'+(hasDesc?" has-desc":"")+'"><div class="inv-row"><div class="inv-main" data-i="'+i+'"><div class="nm">'+qb+esc(it.name)+badge+(hasDesc?' <span class="inv-chev">&#9662;</span>':"")+'</div><div class="meta">'+esc(meta)+'</div></div><div class="ctrl">'+ctrl+"</div></div>"+basePick+desc+"</div>";
+        return '<div class="inv-item'+(hasDesc?" has-desc":"")+'"><div class="inv-row"><div class="inv-main" data-i="'+i+'"><div class="nm">'+qb+esc(it.name)+badge+(hasDesc?' <span class="inv-chev">&#9662;</span>':"")+'</div><div class="meta">'+esc(meta)+(it.source?" · "+srcTag(it.source):"")+'</div></div><div class="ctrl">'+ctrl+"</div></div>"+basePick+desc+"</div>";
       }).join("");
     }else invBody+='<span class="res-sub">No items yet.</span>';
     invBody+='<div class="hr" style="margin:14px 0 10px"></div><div class="res-sub" style="margin-bottom:6px"><b>Add items</b></div>';
