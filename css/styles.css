@@ -308,6 +308,8 @@ body.dark .sheet-portrait,body.dark .portrait{border-color:#565656}
 .top-stat .tl{font-size:9px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
 .stat-inp{width:78px;font-size:20px;text-align:center;padding:6px 4px}
 .xp-inp{width:104px}
+.top-stat.has-why{cursor:help}
+.top-stat.has-why .tl{border-bottom:1px dotted var(--line2);display:inline-block}
 .sheet-hp{min-width:210px}
 .sheet-hp .tv{font-size:24px;display:flex;align-items:center;justify-content:center;gap:4px}
 .sheet-hp #hpCur{width:104px;font-size:22px;padding:8px 6px}

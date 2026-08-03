@@ -224,6 +224,26 @@ S.equipment.inventory.push({name:"Shield",cat:"Armor",ac:2,armorKind:"shield",qt
 check("  plate + shield",C.computeAC(),20);
 
 // =====================================================================
+section("7b. Alternative AC formulas (Unarmored Defense etc.)");
+// scores from setup(): Str15 Dex14(+2) Con13(+1) Int12 Wis10(+0) Cha8
+setup("barbarian-classic","Barbarian",6);
+check("  Barbarian unarmoured (10+Dex2+Con1)",C.computeAC(),13);
+S.equipment.inventory=[{name:"Shield",cat:"Armor",ac:2,armorKind:"shield",qty:1,equipped:true}];
+check("  Barbarian + shield (allowed by RAW)",C.computeAC(),15);
+S.equipment.inventory=[{name:"Plate",cat:"Armor",ac:18,armorKind:"heavy",qty:1,equipped:true}];
+check("  Barbarian in plate ignores Unarmored Defense",C.computeAC(),18);
+setup("monk-classic","Monk",6);
+check("  Monk unarmoured (10+Dex2+Wis0)",C.computeAC(),12);
+S.equipment.inventory=[{name:"Shield",cat:"Armor",ac:2,armorKind:"shield",qty:1,equipped:true}];
+check("  Monk with a shield loses its Unarmored Defense",C.computeAC(),14);   // 10+Dex+shield
+// magic armour variants must be wearable once a base is chosen
+setup("fighter-classic","Fighter",5);
+S.equipment.inventory=[{name:"+1 Armor",cat:"Armor",bonusAc:"+1",requires:["armor"],base:"Plate Armor",qty:1,equipped:true}];
+check("  +1 Armor as Plate (18 + 1)",C.computeAC(),19);
+S.equipment.inventory[0].base=null;
+check("  +1 Armor with no base chosen is not worn",C.computeAC(),12);
+
+// =====================================================================
 section("8. Data integrity");
 check("  core class/edition combos",classes.length,26);
 check("  feature files loaded",Object.keys(window.CC_FEATURE_DATA).length,30);

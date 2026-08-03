@@ -936,15 +936,94 @@
     return t;
   }
   function currencyGP(){var c=state.equipment.currency;return (c.pp||0)*10+(c.gp||0)+(c.ep||0)*0.5+(c.sp||0)*0.1+(c.cp||0)*0.01;}
-  function computeAC(){
-    var dex=abMod(totalScore("Dexterity")),inv=state.equipment.inventory;
-    var body=inv.filter(function(i){return i.equipped&&i.armorKind&&i.armorKind!=="shield";})[0];
-    var shield=inv.filter(function(i){return i.equipped&&i.armorKind==="shield";})[0];
-    var ac;
-    if(body){var a=body.ac||10;ac=body.armorKind==="light"?a+dex:(body.armorKind==="medium"?a+Math.min(dex,2):a);}
-    else ac=10+dex;
-    if(shield)ac+=(shield.ac||2);
-    return ac;
+
+  /* ---------- armour ---------- */
+  function findItemByName(nm){var L=window.CC_ITEMS||[];for(var i=0;i<L.length;i++)if(L[i].name===nm)return L[i];return null;}
+  // an Armor-category item without an armorKind is a magic variant that needs a base (e.g. "+1 Armor")
+  function isVariantArmor(it){
+    if(it.armorKind)return false;
+    var info=itemInfo(it.name,it.source)||{};
+    return (it.cat||info.cat)==="Armor";
+  }
+  function baseArmorsFor(it){
+    var info=itemInfo(it.name,it.source)||{},reqs=it.requires||info.requires||[];
+    var wantShield=(reqs.indexOf("shield")>=0)||/shield/i.test(it.name);
+    return (window.CC_ITEMS||[]).filter(function(x){
+      if(!x.armorKind)return false;
+      return wantShield?(x.armorKind==="shield"):(x.armorKind!=="shield");
+    }).sort(function(a,b){return a.name.localeCompare(b.name);});
+  }
+  // effective armour stats: own values, or a variant applied to its chosen base armour
+  function resolveArmor(it){
+    var info=itemInfo(it.name,it.source)||{};
+    var att=itemAttune(it),attRequired=!!att&&att!=="optional";
+    var bonus=parseInt(String(it.bonusAc||info.bonusAc||"0").replace("+",""),10)||0;
+    if(attRequired&&!it.attuned)bonus=0;              // no magic benefit without attunement
+    if(it.armorKind)return {name:it.name,ac:it.ac,armorKind:it.armorKind,bonus:bonus};
+    if(!isVariantArmor(it)||!it.base)return null;     // variant with no base chosen yet
+    var b=findItemByName(it.base);
+    if(!b||!b.armorKind)return null;
+    return {name:it.name+" ("+b.name+")",ac:b.ac,armorKind:b.armorKind,bonus:bonus};
+  }
+
+  /* ---------- AC ----------
+     Alternative AC formulas (Unarmored Defense, Natural Armor, Draconic Resilience, ...)
+     are read from the feature text rather than hard-coded, so any source works. */
+  var ABIL_WORD={strength:"Strength",dexterity:"Dexterity",constitution:"Constitution",
+                 intelligence:"Intelligence",wisdom:"Wisdom",charisma:"Charisma"};
+  function acFormulas(){
+    var out=[],seen={};
+    featuresAndTraits().forEach(function(t){
+      var txt=entryText(t.entries||"");
+      var m=/(?:armor class|ac)\s*(?:equals|is)\s*(?:equal to\s+)?(\d+)\s*(?:\+|plus)\s*([^.]{0,110})/i.exec(txt);
+      if(!m)return;
+      var tail=m[2];
+      if(/beast/i.test(tail))return;                 // wild-shape form AC, not the character's
+      var mods=[],re=/(strength|dexterity|constitution|intelligence|wisdom|charisma)/gi,mm;
+      while((mm=re.exec(tail)))mods.push(ABIL_WORD[mm[1].toLowerCase()]);
+      if(!mods.length)return;
+      var key=t.name+"|"+m[1]+"|"+mods.join(",");
+      if(seen[key])return;seen[key]=1;
+      out.push({label:t.name,base:parseInt(m[1],10),mods:mods,
+                noShield:/wielding a shield/i.test(txt)&&!/can (?:use|wield) a shield/i.test(txt)});
+    });
+    return out;
+  }
+  // Returns {total, label, parts:[[name,value],...]} using the best applicable formula.
+  function acInfo(){
+    var dex=abMod(totalScore("Dexterity")),body=null,shield=null;
+    state.equipment.inventory.forEach(function(i){
+      if(!i.equipped)return;
+      var a=resolveArmor(i);if(!a)return;
+      if(a.armorKind==="shield"){if(!shield)shield=a;}else if(!body)body=a;
+    });
+    var shieldBonus=shield?((shield.ac||2)+shield.bonus):0;
+    var opts=[];
+    if(body){
+      var b=(body.ac||10),dexPart=body.armorKind==="light"?dex:(body.armorKind==="medium"?Math.min(dex,2):0);
+      var parts=[[body.name,b]];
+      if(body.armorKind!=="heavy")parts.push([body.armorKind==="medium"?"Dex (max 2)":"Dex",dexPart]);
+      if(body.bonus)parts.push(["magic",body.bonus]);
+      opts.push({label:body.name,parts:parts,total:b+dexPart+body.bonus});
+    }else{
+      opts.push({label:"Unarmoured",parts:[["Base",10],["Dex",dex]],total:10+dex});
+      acFormulas().forEach(function(f){
+        if(f.noShield&&shield)return;                // e.g. Monk cannot use a shield with it
+        var p=[[f.label,f.base]],tot=f.base;
+        f.mods.forEach(function(a){var v=abMod(totalScore(a));p.push([ABIL_ABBR[a]||a,v]);tot+=v;});
+        opts.push({label:f.label,parts:p,total:tot});
+      });
+    }
+    var best=opts[0];
+    opts.forEach(function(o){if(o.total>best.total)best=o;});
+    var finalParts=best.parts.slice(),total=best.total;
+    if(shieldBonus){finalParts.push([shield.name,shieldBonus]);total+=shieldBonus;}
+    return {total:total,label:best.label,parts:finalParts};
+  }
+  function computeAC(){return acInfo().total;}
+  function acBreakdown(){
+    var i=acInfo();
+    return i.parts.map(function(p){return p[0]+" "+(p[1]>=0&&p[0]!==i.label?"+":"")+p[1];}).join("  ")+"  =  "+i.total;
   }
 
   function renderEquipment(){renderStarting();renderItemBrowser();renderCurrency();renderInventory();}
@@ -1061,9 +1140,9 @@
       var att=itemAttune(it),info=itemInfo(it.name,it.source),hasDesc=info&&info.entries&&info.entries.length;
       var meta=it.cat+(it.rarity&&it.rarity!=="none"?" · "+it.rarity:"")+(it.dmg?" · "+it.dmg+" "+dmgAbbr(it.dmgType):"")+(it.ac&&it.armorKind!=="shield"?" · AC "+it.ac:"")+(it.armorKind==="shield"?" · +"+(it.ac||2)+" AC":"")+(att?" · "+attuneNote(att):"");
       var ctrl='<input type="number" min="1" class="inv-qty" data-i="'+i+'" value="'+(it.qty||1)+'">';
-      var equippable=it.armorKind||it.cat==="Weapon";
+      var ra2=resolveArmor(it),equippable=ra2||it.cat==="Weapon";
       if(equippable){
-        var lbl=it.armorKind?(it.equipped?"Worn":"Wear"):(it.equipped?"Wielding":"Wield");
+        var lbl=ra2?(it.equipped?"Worn":"Wear"):(it.equipped?"Wielding":"Wield");
         ctrl+='<button class="equip-btn'+(it.equipped?" on":"")+'" data-i="'+i+'">'+lbl+"</button>";
       }
       ctrl+='<button class="rm-btn" data-i="'+i+'" title="Remove">×</button>';
@@ -1252,7 +1331,23 @@
     return out;
   }
   function shCard(title,body){return body?'<div class="sheet-card"><h3>'+esc(title)+'</h3><div class="cbody">'+body+"</div></div>":"";}
-  function topStat(v,l){return '<div class="top-stat"><div class="tv">'+v+'</div><div class="tl">'+esc(l)+"</div></div>";}
+  function topStat(v,l,why){
+    return '<div class="top-stat'+(why?" has-why":"")+'"'+(why?' title="'+esc(why)+'"':"")+'>'+
+      '<div class="tv">'+v+'</div><div class="tl">'+esc(l)+"</div></div>";
+  }
+  // plain-language explanations for the derived header numbers
+  function profWhy(){return "Proficiency bonus for level "+state.level+" = 2 + floor(("+state.level+" - 1) / 4) = +"+profBonus();}
+  function initWhy(){
+    var d=abMod(totalScore("Dexterity"));
+    return "Initiative = Dexterity modifier ("+modStr(d)+"), from a Dexterity score of "+totalScore("Dexterity")+".";
+  }
+  function speedWhy(){
+    var race=currentRace(),lin=race?currentLineage(race):null;
+    var src=(lin&&lin.speed)?lin.name:(race?race.name:null);
+    var sp=(race&&race.speed)?race.speed:"30 ft. (default)";
+    return src?("Walking speed "+sp+" from your species ("+src+").")
+              :("Walking speed "+sp+". Choose a species to set this.");
+  }
 
   function sheetCollapse(items,prefix){
     if(!items||!items.length)return '<span class="res-sub">None.</span>';
@@ -1339,6 +1434,31 @@
     }
     return "";
   }
+  // Every feature/trait the character actually has: race + lineage + class + chosen
+  // subclass (up to the current level), with nested feature references expanded.
+  function featuresAndTraits(){
+    var race=currentRace(),lin=race?currentLineage(race):null,fd=state.fdata,list=[];
+    if(race)list=list.concat(race.traits||[]);
+    if(lin)list=list.concat(lin.traits||[]);
+    if(fd){
+      (fd.classFeatures||[]).forEach(function(f){if(f.level<=state.level)list.push(f);});
+      var chosen=state.subclassName?(fd.subclasses||[]).filter(function(s){return s.name===state.subclassName;})[0]:null;
+      if(chosen)(chosen.features||[]).forEach(function(f){if(f.level<=state.level)list.push(f);});
+    }
+    var lookup=(fd&&fd.refLookup)||{},expanded=[],seen={};
+    function collectRefs(e){
+      if(!e)return;
+      if(e instanceof Array){for(var i=0;i<e.length;i++)collectRefs(e[i]);return;}
+      if(typeof e!=="object")return;
+      var key=e.classFeature||e.subclassFeature;
+      if((e.type==="refClassFeature"||e.type==="refSubclassFeature")&&key&&lookup[key]&&!seen[key]){
+        seen[key]=1;expanded.push(lookup[key]);collectRefs(lookup[key].entries);return;
+      }
+      for(var k in e){if(k!=="type"&&k!=="name")collectRefs(e[k]);}
+    }
+    list.forEach(function(t){collectRefs(t.entries);});
+    return list.concat(expanded);
+  }
   // classify features/traits (+ racial bonus-action spells) by action economy; keep entries for descriptions
   function actionEconomy(){
     var out={action:[],bonus:[],reaction:[]},seen={};
@@ -1350,26 +1470,8 @@
       if(txt.indexOf("bonus action")>=0)push(out.bonus,"b"+t.name,t);
       if(txt.indexOf("as a reaction")>=0||txt.indexOf("your reaction")>=0)push(out.reaction,"r"+t.name,t);
     }
-    var race=currentRace(),lin=race?currentLineage(race):null,fd=state.fdata,traits=[];
-    if(race)traits=traits.concat(race.traits||[]);
-    if(lin)traits=traits.concat(lin.traits||[]);
-    if(fd){(fd.classFeatures||[]).forEach(function(f){if(f.level<=state.level)traits.push(f);});
-      var chosen=state.subclassName?(fd.subclasses||[]).filter(function(s){return s.name===state.subclassName;})[0]:null;
-      if(chosen)(chosen.features||[]).forEach(function(f){if(f.level<=state.level)traits.push(f);});}
-    // expand nested feature references (e.g. Tempestuous Magic inside "Storm Sorcery")
-    var lookup=(fd&&fd.refLookup)||{},expanded=[];
-    function collectRefs(e){
-      if(!e)return;
-      if(e instanceof Array){for(var i=0;i<e.length;i++)collectRefs(e[i]);return;}
-      if(typeof e!=="object")return;
-      var key=e.classFeature||e.subclassFeature;
-      if((e.type==="refClassFeature"||e.type==="refSubclassFeature")&&key&&lookup[key]){
-        expanded.push(lookup[key]);collectRefs(lookup[key].entries);return;
-      }
-      for(var k in e){if(k!=="type"&&k!=="name")collectRefs(e[k]);}
-    }
-    traits.forEach(function(t){collectRefs(t.entries);});
-    traits.concat(expanded).forEach(classify);
+    featuresAndTraits().forEach(classify);
+    var race=currentRace(),lin=race?currentLineage(race):null;
     var rsp=[];if(race)rsp=rsp.concat(race.spells||[]);if(lin)rsp=rsp.concat(lin.spells||[]);
     rsp.forEach(function(sp){var s=spellByName(sp.name);if(s&&s.time&&s.time.indexOf("bonus")>=0)push(out.bonus,"b"+s.name,s);});
     return out;
@@ -1468,7 +1570,7 @@
     var sub=((race?race.name+(lin?" ("+lin.name+")":""):"")+" "+state.className+" "+state.level).trim();
 
     var html='<div class="sheet-head"><div class="sheet-portrait" id="sheetPortrait">'+(state.portrait?'<img src="'+state.portrait+'">':"&#9670;")+'</div><div><div class="sheet-name">'+esc(state.name||"Unnamed")+'</div><div class="sheet-sub">'+esc(sub)+"</div></div>"+
-      '<div class="sheet-top">'+topStat("+"+prof,"Prof Bonus")+topStat(esc(race&&race.speed?race.speed:"30 ft."),"Speed")+topStat(modStr(init),"Initiative")+topStat(ac,"Armor Class")+
+      '<div class="sheet-top">'+topStat("+"+prof,"Prof Bonus",profWhy())+topStat(esc(race&&race.speed?race.speed:"30 ft."),"Speed",speedWhy())+topStat(modStr(init),"Initiative",initWhy())+topStat(ac,"Armor Class","Armor Class: "+acBreakdown())+
       '<div class="top-stat insp-box" id="inspBox"><div class="tv">'+(state.sheet.inspiration?"&#9733;":"&#9734;")+'</div><div class="tl">Inspiration</div></div>'+
       '<div class="top-stat sheet-hp"><div class="tv"><input type="number" id="hpCur" value="'+esc(state.sheet.hpCurrent)+'"> / '+(mhp==null?"—":mhp)+'</div><div class="tl">Hit Points</div></div>'+
       '<div class="top-stat"><div class="tv"><input type="number" id="hpTemp" class="stat-inp" value="'+esc(state.sheet.hpTemp||"")+'"></div><div class="tl">Temp HP</div></div>'+
@@ -1532,7 +1634,8 @@
         var meta=it.cat+(it.dmg?" · "+it.dmg+" "+(it.dmgType||""):"")+(it.ac&&it.armorKind!=="shield"?" · AC "+it.ac:"")+(it.armorKind==="shield"?" · +"+(it.ac||2)+" AC":"")+(it.rarity&&it.rarity!=="none"?" · "+it.rarity:"")+(att?" · "+attuneNote(att):"");
         var qb=(it.qty>1?'<span class="qty-badge">&times;'+it.qty+"</span> ":"");
         var ctrl='<input type="number" min="1" class="sh-qty" data-i="'+i+'" title="Quantity" value="'+(it.qty||1)+'">';
-        if(it.armorKind||it.cat==="Weapon"){var lbl=it.armorKind?(it.equipped?"Worn":"Wear"):(it.equipped?"Wielding":"Wield");ctrl+='<button class="equip-btn sh-equip'+(it.equipped?" on":"")+'" data-i="'+i+'">'+lbl+"</button>";}
+        var ra=resolveArmor(it);
+        if(ra||it.cat==="Weapon"){var lbl=ra?(it.equipped?"Worn":"Wear"):(it.equipped?"Wielding":"Wield");ctrl+='<button class="equip-btn sh-equip'+(it.equipped?" on":"")+'" data-i="'+i+'">'+lbl+"</button>";}
         if(att)ctrl+='<button class="equip-btn sh-attune'+(it.attuned?" on":"")+'" data-i="'+i+'" title="'+esc(attuneNote(att))+'">'+(it.attuned?"Attuned":"Attune")+"</button>";
         ctrl+='<button class="rm-btn sh-rm" data-i="'+i+'">&times;</button>';
         var desc=hasDesc?'<div class="inv-desc">'+info.entries.map(renderEntry).join("")+"</div>":"";
@@ -1542,6 +1645,10 @@
           var reqs=it.requires||(info||{}).requires,pool=baseWeaponsFor(reqs);
           basePick='<div class="base-pick">Applies to: <select class="sh-base" data-i="'+i+'"><option value="">— choose a base weapon —</option>'+
             pool.map(function(b){return '<option value="'+esc(b.name)+'"'+(it.base===b.name?" selected":"")+'>'+esc(b.name+" ("+b.dmg+" "+dmgAbbr(b.dmgType)+")")+"</option>";}).join("")+"</select></div>";
+        }else if(isVariantArmor(it)){
+          var apool=baseArmorsFor(it);
+          basePick='<div class="base-pick">Applies to: <select class="sh-base" data-i="'+i+'"><option value="">— choose base armour —</option>'+
+            apool.map(function(b){return '<option value="'+esc(b.name)+'"'+(it.base===b.name?" selected":"")+'>'+esc(b.name+" (AC "+b.ac+", "+b.armorKind+")")+"</option>";}).join("")+"</select></div>";
         }
         return '<div class="inv-item'+(hasDesc?" has-desc":"")+'"><div class="inv-row"><div class="inv-main" data-i="'+i+'"><div class="nm">'+qb+esc(it.name)+badge+(hasDesc?' <span class="inv-chev">&#9662;</span>':"")+'</div><div class="meta">'+esc(meta)+(it.source?" · "+srcTag(it.source):"")+'</div></div><div class="ctrl">'+ctrl+"</div></div>"+basePick+desc+"</div>";
       }).join("");
@@ -1610,7 +1717,8 @@
     if(aci)aci.addEventListener("click",addCustom);
     if(ic)ic.addEventListener("keydown",function(e){if(e.keyCode===13){e.preventDefault();addCustom();}});
     Array.prototype.forEach.call(host.querySelectorAll(".sh-qty"),function(inp){inp.addEventListener("change",function(){state.equipment.inventory[+inp.getAttribute("data-i")].qty=parseInt(inp.value,10)||1;});});
-    Array.prototype.forEach.call(host.querySelectorAll(".sh-equip"),function(b){b.addEventListener("click",function(){var it=state.equipment.inventory[+b.getAttribute("data-i")];if(!it.equipped&&it.armorKind&&it.armorKind!=="shield")state.equipment.inventory.forEach(function(x){if(x.armorKind&&x.armorKind!=="shield")x.equipped=false;});it.equipped=!it.equipped;render();});});
+    Array.prototype.forEach.call(host.querySelectorAll(".sh-equip"),function(b){b.addEventListener("click",function(){var it=state.equipment.inventory[+b.getAttribute("data-i")];var rk=resolveArmor(it);
+      if(!it.equipped&&rk&&rk.armorKind!=="shield")state.equipment.inventory.forEach(function(x){var xk=resolveArmor(x);if(xk&&xk.armorKind!=="shield")x.equipped=false;});it.equipped=!it.equipped;render();});});
     Array.prototype.forEach.call(host.querySelectorAll(".sh-attune"),function(b){b.addEventListener("click",function(){
       var it=state.equipment.inventory[+b.getAttribute("data-i")];
       if(!itemAttune(it))return;                                  // not an attunable item
