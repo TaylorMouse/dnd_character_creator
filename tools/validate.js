@@ -53,7 +53,7 @@ app=app.replace("populateLevels();showEdition();",
  "needsCustomAsi:needsCustomAsi,currentRace:currentRace,currentLineage:currentLineage,"+
  "featAsiPicks:featAsiPicks,featAsiPending:featAsiPending,asiResolved:asiResolved,"+
  "featureAttacks:featureAttacks,featureSkillChoice:featureSkillChoice,featureSkillPicks:featureSkillPicks,"+
- "featuresAndTraits:featuresAndTraits,condNotesFor:condNotesFor,officialLanguages:officialLanguages,languagesAll:languagesAll};");
+ "featuresAndTraits:featuresAndTraits,condNotesFor:condNotesFor,officialLanguages:officialLanguages,languagesAll:languagesAll,mergedLanguages:mergedLanguages};");
 eval(app);
 var C=window.__cc,S=C.state;
 
@@ -441,6 +441,47 @@ check("  the 16 PHB core languages are flagged",(function(){var n=0;for(var i=0;
 // a custom language still works and shows up
 S.customLanguages=["Tedlenese"];
 checkTrue("  a custom language is included",C.languagesAll().indexOf("Tedlenese")>=0);
+
+
+// =====================================================================
+section("7j. Lineage species languages (MPMM/VRGR)");
+setup("barbarian-classic","Barbarian",6);
+S.race={name:"Shifter",source:"MPMM"};S.raceLineage=null;
+var shr=C.currentRace();
+checkTrue("  Shifter is flagged as a lineage species",!!shr.lineage);
+check("  it grants Common",shr.languages.fixed.join(","),"Common");
+check("  plus one language of choice",shr.languages.any,1);
+checkTrue("  and explains the DM agreement",shr.langNote.indexOf("your DM")>=0);
+check("  known before choosing",C.languagesAll().join(","),"Common");
+S.raceChoices["race:langany:0"]="Draconic";
+check("  known after choosing",C.languagesAll().join(","),"Common,Draconic");
+// a species with real language data must be untouched
+setup("barbarian-classic","Barbarian",6);
+S.race={name:"Elf",source:"PHB"};S.raceLineage=null;
+var elr=C.currentRace();
+checkTrue("  Elf is not a lineage species",!elr.lineage);
+check("  Elf still gets Common and Elvish",elr.languages.fixed.join(","),"Common,Elvish");
+check("  ...with no extra pick",elr.languages.any,0);
+// every lineage species should offer the same deal
+var LR=window.CC_RACES.classic,bad=0,cnt=0;
+for(var i=0;i<LR.length;i++){
+  if(!LR[i].lineage||LR[i].name==="Custom Lineage")continue;cnt++;   // Custom Lineage states its own
+  if(LR[i].languages.fixed.join(",")!=="Common"||LR[i].languages.any!==1)bad++;
+}
+checkTrue("  many lineage species exist",cnt>40);
+check("  all grant Common + 1",bad,0);
+// a lineage may add languages of its own; they must not be dropped
+setup("wizard-classic","Wizard",5);
+S.race={name:"Elf",source:"PHB"};S.raceLineage="High";
+var hm=C.mergedLanguages(C.currentRace(),C.currentLineage(C.currentRace()));
+check("  High Elf keeps Common and Elvish",hm.fixed.join(","),"Common,Elvish");
+check("  ...and adds an extra standard language",hm.anyStandard,1);
+S.raceChoices["race:lang:0"]="Draconic";
+checkTrue("  the extra pick reaches the character",C.languagesAll().indexOf("Draconic")>=0);
+S.raceLineage="Sea (MTF)";
+var sm=C.mergedLanguages(C.currentRace(),C.currentLineage(C.currentRace()));
+checkTrue("  Sea Elf gains Aquan",sm.fixed.indexOf("Aquan")>=0);
+
 
 // =====================================================================
 section("8. Data integrity");

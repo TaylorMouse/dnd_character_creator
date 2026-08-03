@@ -134,15 +134,26 @@ def ancestry_of(entries):
     return None
 
 def base_obj(r):
+    # 5etools marks MPMM/VRGR-style species with `lineage`; their ability increases and
+    # languages are not stored per race because the book states them once:
+    # "Common and one other language that you and your DM agree is appropriate".
+    langs = parse_langs(r.get("languageProficiencies"))
+    lineage = bool(r.get("lineage"))
+    lang_note = ""
+    if lineage and not r.get("languageProficiencies"):
+        langs = {"fixed": ["Common"], "anyStandard": 0, "any": 1, "choose": None}
+        lang_note = ("You can speak, read and write Common and one other language that you "
+                     "and your DM agree is appropriate for your character.")
     o={
       "name":r.get("name",""),"source":r.get("source",""),"edition":r.get("edition","classic"),
+      "lineage":lineage,"langNote":lang_note,
       "size":", ".join(SIZE.get(s,s) for s in (r.get("size") or [])),
       "speed":parse_speed(r.get("speed")),
       "senses":senses_of(r),
       "ability":parse_ability(r.get("ability")),
       "resist":[tcase(x) for x in (r.get("resist") or []) if isinstance(x,str)],
       "immune":[tcase(x) for x in (r.get("immune") or []) if isinstance(x,str)],
-      "languages":parse_langs(r.get("languageProficiencies")),
+      "languages":langs,
       "skills":parse_skills(r.get("skillProficiencies")),
       "weapons":prof_text(r.get("weaponProficiencies")),
       "armor":prof_text(r.get("armorProficiencies")),

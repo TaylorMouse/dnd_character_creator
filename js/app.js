@@ -795,6 +795,20 @@
     var list=(window.CC_RACES&&window.CC_RACES[state.edition])||[];
     return list.filter(function(r){return r.name===state.race.name&&r.source===state.race.source;})[0]||null;
   }
+  // A lineage can add languages of its own (High Elf's extra standard language,
+  // Duergar's Undercommon, ...), so combine them with the species entry.
+  function mergedLanguages(race,lin){
+    var out={fixed:[],anyStandard:0,any:0,choose:null};
+    function addFrom(L){
+      if(!L)return;
+      (L.fixed||[]).forEach(function(x){if(out.fixed.indexOf(x)<0)out.fixed.push(x);});
+      out.anyStandard+=L.anyStandard||0;
+      out.any+=L.any||0;
+      if(L.choose&&!out.choose)out.choose=L.choose;
+    }
+    addFrom(race&&race.languages);addFrom(lin&&lin.languages);
+    return out;
+  }
   function currentLineage(race){
     if(!race||!state.raceLineage)return null;
     return race.lineages.filter(function(l){return l.name===state.raceLineage;})[0]||null;
@@ -885,7 +899,7 @@
     if(lin)lin.ability.choose.forEach(function(c){chooseList.push({src:"linasi",c:c});});
     var senses=(lin&&lin.senses&&lin.senses.length)?lin.senses:race.senses;
     var resist=race.resist.concat(lin?lin.resist:[]);
-    var skills=race.skills,langs=race.languages;
+    var skills=race.skills,langs=mergedLanguages(race,lin);
     var spells=race.spells.concat(lin?lin.spells:[]);
     var spellChoices=race.spellChoices.concat(lin?lin.spellChoices:[]);
     var scAbility=(lin&&lin.scAbility)?lin.scAbility:race.scAbility;
@@ -916,6 +930,12 @@
     if(skills.choose){s+=raceSelectHtml("race:skill",skills.choose.from,skills.choose.count,"Skill proficiency");if(raceChoiceCount("race:skill",skills.choose.count)<skills.choose.count)pending=true;}
     if(skills.any){s+=raceSelectHtml("race:skillany",ALL_SKILLS.filter(function(x){return skills.fixed.indexOf(x)<0;}),skills.any,"Skill proficiency (any)");if(raceChoiceCount("race:skillany",skills.any)<skills.any)pending=true;}
     if(langs.fixed.length)s+=line("Languages",langs.fixed.join(", "));
+    if(race.langNote)s+='<p class="prof-line tag-note">'+esc(race.langNote)+"</p>";
+    else if(!langs.fixed.length&&!langs.anyStandard&&!langs.any&&!langs.choose){
+      s+='<p class="prof-line tag-note">'+(state.edition==="one"
+        ?"Languages come from your background in the 2024 rules, not from your species."
+        :"This source does not list languages for this species — add any you need on the sheet.")+"</p>";
+    }
     if(langs.anyStandard){s+=raceSelectHtml("race:lang",langPool(),langs.anyStandard,"Language");if(raceChoiceCount("race:lang",langs.anyStandard)<langs.anyStandard)pending=true;}
     if(langs.any){s+=raceSelectHtml("race:langany",langPool(),langs.any,"Language (any)");if(raceChoiceCount("race:langany",langs.any)<langs.any)pending=true;}
     if(spells.length)s+=line("Innate / Racial Spells",spells.map(function(sp){return sp.name+(sp.cantrip?" (cantrip)":"");}).join(", "));
@@ -1560,10 +1580,13 @@
   }
   function languagesAll(){
     var out=[],seen={};function add(l){if(l&&!seen[l]){seen[l]=1;out.push(l);}}
-    var race=currentRace();
-    if(race){(race.languages.fixed||[]).forEach(add);
-      for(var i=0;i<(race.languages.anyStandard||0);i++)add(state.raceChoices["race:lang:"+i]);
-      for(var i=0;i<(race.languages.any||0);i++)add(state.raceChoices["race:langany:"+i]);}
+    var race=currentRace(),rlin=race?currentLineage(race):null;
+    if(race){
+      var rl=mergedLanguages(race,rlin);
+      (rl.fixed||[]).forEach(add);
+      for(var i=0;i<(rl.anyStandard||0);i++)add(state.raceChoices["race:lang:"+i]);
+      for(var i=0;i<(rl.any||0);i++)add(state.raceChoices["race:langany:"+i]);
+    }
     var bg=currentBg();
     if(bg){(bg.langs.fixed||[]).forEach(add);
       for(var i=0;i<(bg.langs.anyStandard||0);i++)add(state.bgChoices["langStd:"+i]);
