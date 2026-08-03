@@ -1007,16 +1007,26 @@
     });
     var cap=150,shown=list.slice(0,cap);
     var html=shown.map(function(it){
-      var meta=it.cat+(it.dmg?" · "+it.dmg+" "+(it.dmgType||""):"")+(it.ac?" · AC "+it.ac:"")+" · "+it.source;
-      return '<div class="item-row"><div><div class="nm">'+esc(it.name)+rarBadge(it.rarity)+'</div><div class="meta">'+esc(meta)+'</div></div><button class="add" data-name="'+esc(it.name)+'" data-source="'+esc(it.source)+'">ADD</button></div>';
+      var att=it.attune?" · "+attuneNote(it.attune):"";
+      var meta=it.cat+(it.rarity&&it.rarity!=="none"?" · "+it.rarity:"")+(it.dmg?" · "+it.dmg+" "+dmgAbbr(it.dmgType):"")+(it.ac?" · AC "+it.ac:"")+att+" · "+it.source;
+      var hasDesc=it.entries&&it.entries.length;
+      var desc=hasDesc?'<div class="inv-desc">'+it.entries.map(renderEntry).join("")+"</div>":"";
+      return '<div class="inv-res-item"><div class="item-row"><div class="res-name-click">'+
+        '<div class="nm">'+esc(it.name)+rarBadge(it.rarity)+(hasDesc?' <span class="inv-chev">&#9662;</span>':"")+'</div>'+
+        '<div class="meta">'+esc(meta)+'</div></div>'+
+        '<button class="add" data-name="'+esc(it.name)+'" data-source="'+esc(it.source)+'">ADD</button></div>'+desc+"</div>";
     }).join("")||'<div class="results-note">No items match.</div>';
     if(list.length>cap)html+='<div class="results-note">Showing '+cap+" of "+list.length+" — refine your search.</div>";
     $("itemResults").innerHTML=html;
     Array.prototype.forEach.call($("itemResults").querySelectorAll(".add"),function(b){
-      b.addEventListener("click",function(){
+      b.addEventListener("click",function(e){
+        e.stopPropagation();
         var it=(window.CC_ITEMS||[]).filter(function(x){return x.name===b.getAttribute("data-name")&&x.source===b.getAttribute("data-source");})[0];
         if(it){addItemObj(it);renderInventory();}
       });
+    });
+    Array.prototype.forEach.call($("itemResults").querySelectorAll(".res-name-click"),function(n){
+      n.addEventListener("click",function(){n.parentNode.parentNode.classList.toggle("open");});
     });
   }
 
@@ -1036,7 +1046,8 @@
     var html='<div class="stat-box"><div><div class="sv">'+computeAC()+'</div><div class="sl">Armor Class</div></div><div><div class="sv">'+modStr(dex)+'</div><div class="sl">Initiative</div></div><div><div class="sv">'+inv.length+'</div><div class="sl">Items</div></div></div>';
     if(!inv.length)html+='<p class="sec-note">No items yet. Add starting equipment or browse above.</p>';
     inv.forEach(function(it,i){
-      var meta=it.cat+(it.dmg?" · "+it.dmg+" "+(it.dmgType||""):"")+(it.ac&&it.armorKind!=="shield"?" · AC "+it.ac:"")+(it.armorKind==="shield"?" · +"+(it.ac||2)+" AC":"");
+      var att=itemAttune(it),info=itemInfo(it.name,it.source),hasDesc=info&&info.entries&&info.entries.length;
+      var meta=it.cat+(it.rarity&&it.rarity!=="none"?" · "+it.rarity:"")+(it.dmg?" · "+it.dmg+" "+dmgAbbr(it.dmgType):"")+(it.ac&&it.armorKind!=="shield"?" · AC "+it.ac:"")+(it.armorKind==="shield"?" · +"+(it.ac||2)+" AC":"")+(att?" · "+attuneNote(att):"");
       var ctrl='<input type="number" min="1" class="inv-qty" data-i="'+i+'" value="'+(it.qty||1)+'">';
       var equippable=it.armorKind||it.cat==="Weapon";
       if(equippable){
@@ -1044,7 +1055,8 @@
         ctrl+='<button class="equip-btn'+(it.equipped?" on":"")+'" data-i="'+i+'">'+lbl+"</button>";
       }
       ctrl+='<button class="rm-btn" data-i="'+i+'" title="Remove">×</button>';
-      html+='<div class="inv-row"><div><div class="nm">'+esc(it.name)+rarBadge(it.rarity)+(it.generic?' <span class="meta">(no stats)</span>':"")+'</div><div class="meta">'+esc(meta)+'</div></div><div class="ctrl">'+ctrl+"</div></div>";
+      var desc=hasDesc?'<div class="inv-desc">'+info.entries.map(renderEntry).join("")+"</div>":"";
+      html+='<div class="inv-item'+(hasDesc?" has-desc":"")+'"><div class="inv-row"><div class="inv-main" data-i="'+i+'"><div class="nm">'+esc(it.name)+rarBadge(it.rarity)+(it.generic?' <span class="meta">(no stats)</span>':"")+(hasDesc?' <span class="inv-chev">&#9662;</span>':"")+'</div><div class="meta">'+esc(meta)+'</div></div><div class="ctrl">'+ctrl+"</div></div>"+desc+"</div>";
     });
     $("inventoryPanel").innerHTML=html;
     Array.prototype.forEach.call($("inventoryPanel").querySelectorAll(".inv-qty"),function(inp){inp.addEventListener("change",function(){inv[+inp.getAttribute("data-i")].qty=parseInt(inp.value,10)||1;});});
@@ -1054,6 +1066,7 @@
       it.equipped=!it.equipped;renderInventory();
     });});
     Array.prototype.forEach.call($("inventoryPanel").querySelectorAll(".rm-btn"),function(b){b.addEventListener("click",function(){inv.splice(+b.getAttribute("data-i"),1);renderInventory();});});
+    Array.prototype.forEach.call($("inventoryPanel").querySelectorAll(".inv-item.has-desc .inv-main"),function(m){m.addEventListener("click",function(){m.parentNode.parentNode.classList.toggle("open");});});
   }
 
   /* ---------- spells ---------- */
