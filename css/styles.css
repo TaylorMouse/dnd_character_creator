@@ -403,10 +403,10 @@ body.dark .ac-edit{background:#262626;border-color:#4a4a4a}
 .def-adv{font-size:13px;cursor:help}
 .def-mark{color:#2e7d32;font-size:10px;vertical-align:middle;margin-right:4px}
 body.dark .def-mark{color:#7fd18a}
-.line-row .dot.exp{background:var(--accent);border-color:var(--accent);box-shadow:0 0 0 2px rgba(200,16,46,.25)}
-body.dark .line-row .dot.exp{background:tomato;border-color:tomato}
-.exp-tag{font-size:9px;font-weight:800;color:#fff;background:var(--accent);border-radius:3px;padding:0 3px;vertical-align:middle}
-body.dark .exp-tag{background:tomato;color:#222}
+.line-row .dot.exp{background:#2e7d32;border-color:#2e7d32;box-shadow:0 0 0 2px rgba(46,125,50,.25)}
+body.dark .line-row .dot.exp{background:#7fd18a;border-color:#7fd18a;box-shadow:0 0 0 2px rgba(127,209,138,.25)}
+.exp-tag{font-size:9px;font-weight:800;color:#fff;background:#2e7d32;border-radius:3px;padding:0 3px;vertical-align:middle}
+body.dark .exp-tag{background:#7fd18a;color:#123}
 .passive-row{display:flex;justify-content:space-between;font-size:13px;padding:3px 2px}
 .passive-row b{font-weight:800}
 .prof-blk{font-size:13px;margin-bottom:8px}
