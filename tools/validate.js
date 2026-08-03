@@ -37,7 +37,7 @@ var ROOT=fso.GetParentFolderName(fso.GetParentFolderName(WScript.ScriptFullName)
 
 // ---------- load data + app ----------
 var dataFiles=["data-classes.js","data-feats.js","data-backgrounds.js","data-races.js",
-               "data-items.js","data-starting.js","data-spells.js","data-spellcasting.js","data-resources.js"];
+               "data-items.js","data-starting.js","data-spells.js","data-spellcasting.js","data-resources.js","data-speed.js"];
 for(var i=0;i<dataFiles.length;i++) eval(readFile(ROOT+"resources\\"+dataFiles[i]));
 // every generated per-class feature file
 var featDir=fso.GetFolder(ROOT+"resources\\features"),fe=new Enumerator(featDir.Files);
@@ -49,7 +49,7 @@ app=app.replace("populateLevels();showEdition();",
  "profBonus:profBonus,maxHP:maxHP,abMod:abMod,totalScore:totalScore,spellInfo:spellInfo,"+
  "proficientSkills:proficientSkills,savingProfs:savingProfs,computeAC:computeAC,"+
  "actionEconomy:actionEconomy,classSpellList:classSpellList,SKILL_ABILITY:SKILL_ABILITY,"+
- "ABILITIES:ABILITIES,maxSpellLevel:maxSpellLevel};");
+ "ABILITIES:ABILITIES,maxSpellLevel:maxSpellLevel,speedInfo:speedInfo};");
 eval(app);
 var C=window.__cc,S=C.state;
 
@@ -256,6 +256,28 @@ check("  worn armour ignores Unarmored Defense",C.computeAC(),13);   // 11+Dex2,
 S.equipment.inventory=[{name:"Plate",cat:"Armor",ac:18,armorKind:"heavy",qty:1,equipped:true},
                        {name:"Leather Armor",cat:"Armor",ac:11,armorKind:"light",qty:1,equipped:true}];
 checkTrue("  two body armours never stack",C.computeAC()<=20);
+
+
+// =====================================================================
+section("7c. Walking speed from features");
+setup("barbarian-classic","Barbarian",4);
+check("  Barbarian 4 (no Fast Movement yet)",C.speedInfo().total,30);
+setup("barbarian-classic","Barbarian",5);
+check("  Barbarian 5 Fast Movement +10",C.speedInfo().total,40);
+S.equipment.inventory=[{name:"Plate",cat:"Armor",ac:18,armorKind:"heavy",qty:1,equipped:true}];
+check("  ...suppressed by heavy armour",C.speedInfo().total,30);
+S.equipment.inventory=[{name:"Leather Armor",cat:"Armor",ac:11,armorKind:"light",qty:1,equipped:true}];
+check("  ...still applies in light armour",C.speedInfo().total,40);
+setup("monk-classic","Monk",1);  check("  Monk 1  Unarmored Movement +0",C.speedInfo().total,30);
+setup("monk-classic","Monk",2);  check("  Monk 2  Unarmored Movement +10",C.speedInfo().total,40);
+setup("monk-classic","Monk",6);  check("  Monk 6  Unarmored Movement +15",C.speedInfo().total,45);
+setup("monk-classic","Monk",18); check("  Monk 18 Unarmored Movement +30",C.speedInfo().total,60);
+S.equipment.inventory=[{name:"Shield",cat:"Armor",ac:2,armorKind:"shield",qty:1,equipped:true}];
+check("  Monk with a shield loses it",C.speedInfo().total,30);
+// a lineage may override the species speed (Wood Elf 35 ft.)
+setup("barbarian-classic","Barbarian",1);
+S.race={name:"Elf",source:"PHB"};S.raceLineage="Wood";
+check("  Wood Elf lineage speed 35",C.speedInfo().total,35);
 
 // =====================================================================
 section("8. Data integrity");

@@ -36,3 +36,29 @@ io.open(OUT, "w", encoding="utf-8").write(
     "// Auto-generated class resource trackers from 5etools\nwindow.CC_RESOURCES = "
     + json.dumps(out, ensure_ascii=False) + ";\n")
 print("classes with resources:", len(out))
+
+# --- per-level walking-speed bonuses (Monk's Unarmored Movement uses type:bonusSpeed) ---
+speed = {}
+for fn in glob.glob(os.path.join(_DATA_ROOT, "class", "class-*.json")):
+    if "fluff" in fn: continue
+    d = json.load(open(fn, encoding="utf-8"))
+    for c in d.get("class", []):
+        slug = slugify(c["name"], c.get("edition", "classic"))
+        for g in c.get("classTableGroups", []):
+            for i, l in enumerate(g.get("colLabels") or []):
+                rows = g.get("rows") or []
+                vals, found = [], False
+                for j in range(len(rows)):
+                    cell = rows[j][i] if i < len(rows[j]) else None
+                    if isinstance(cell, dict) and cell.get("type") == "bonusSpeed":
+                        vals.append(int(cell.get("value") or 0)); found = True
+                    else:
+                        vals.append(0)
+                if found:
+                    speed[slug] = {"name": strip(l), "values": (vals + [0] * 20)[:20]}
+
+OUT2 = os.path.join(_RES, "data-speed.js")
+io.open(OUT2, "w", encoding="utf-8").write(
+    "// Auto-generated per-level walking speed bonuses from 5etools class tables\n"
+    "window.CC_SPEEDPROG = " + json.dumps(speed, ensure_ascii=False) + ";\n")
+print("classes with a speed progression:", len(speed), list(speed.keys()))

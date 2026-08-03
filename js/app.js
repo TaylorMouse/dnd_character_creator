@@ -706,7 +706,7 @@
 
     var s="";
     s+=line("Size",race.size||"—");
-    s+=line("Speed",race.speed||"—");
+    s+=line("Speed",(lin&&lin.speed?lin.speed:race.speed)||"—");
     s+=line("Senses",senses.join(", ")||"—");
     var asiParts=[];for(var k in fixed)asiParts.push(k+" +"+fixed[k]);
     var asiText=(state.edition==="one")?"None from species — your ability increases come from your background (2024 rules)":(asiParts.join(", ")||"None");
@@ -1375,12 +1375,59 @@
     var d=abMod(totalScore("Dexterity"));
     return "Initiative = Dexterity modifier ("+modStr(d)+"), from a Dexterity score of "+totalScore("Dexterity")+".";
   }
-  function speedWhy(){
+  /* ---------- walking speed ----------
+     Base comes from the species (a lineage may override it, e.g. Wood Elf 35 ft.).
+     Always-on class features then add to it, subject to their armour condition.
+     Activated or temporary boosts (Blade Flourish, Dread Ambusher, Shifting, ...) are
+     listed as situational notes instead of being added, so the number stays truthful. */
+  var PASSIVE_SPEED={
+    "Fast Movement":{bonus:10,notHeavy:true},            // Barbarian 5
+    "Roving":{bonus:10,notHeavy:true},                   // Ranger 2024
+    "Superior Mobility":{bonus:10},                      // Scout rogue
+    "Unarmored Movement":{fromTable:true,noArmor:true,noShield:true}   // Monk, scales by level
+  };
+  function wornArmor(){
+    var out={body:null,shield:false};
+    state.equipment.inventory.forEach(function(i){
+      if(!i.equipped)return;
+      var a=resolveArmor(i);if(!a)return;
+      if(a.armorKind==="shield")out.shield=true;else if(!out.body)out.body=a.armorKind;
+    });
+    return out;
+  }
+  function speedInfo(){
     var race=currentRace(),lin=race?currentLineage(race):null;
-    var src=(lin&&lin.speed)?lin.name:(race?race.name:null);
-    var sp=(race&&race.speed)?race.speed:"30 ft. (default)";
-    return src?("Walking speed "+sp+" from your species ("+src+").")
-              :("Walking speed "+sp+". Choose a species to set this.");
+    var raw=(lin&&lin.speed)?lin.speed:(race?race.speed:"");
+    var base=parseInt(raw,10)||30;
+    var label=(lin&&lin.speed)?lin.name:(race?race.name:"Base");
+    var parts=[[label,base]],total=base,notes=[],w=wornArmor(),seen={};
+    var prog=(window.CC_SPEEDPROG&&window.CC_SPEEDPROG[state.slug])||null;
+    featuresAndTraits().forEach(function(f){
+      var cfg=PASSIVE_SPEED[f.name];
+      var txt=entryText(f.entries||"");
+      if(!cfg){
+        var m=/speed increases by (\d+) f/i.exec(txt);          // situational boost
+        if(m&&!seen["n"+f.name]){seen["n"+f.name]=1;notes.push(f.name+" +"+m[1]+" ft. (situational)");}
+        return;
+      }
+      if(seen[f.name])return;seen[f.name]=1;
+      var amount=cfg.bonus;
+      if(cfg.fromTable)amount=prog?(prog.values[state.level-1]||0):0;
+      if(!amount)return;
+      if(cfg.noArmor&&w.body){notes.push(f.name+" +"+amount+" ft. (needs no armour)");return;}
+      if(cfg.noShield&&w.shield){notes.push(f.name+" +"+amount+" ft. (no shield allowed)");return;}
+      if(cfg.notHeavy&&w.body==="heavy"){notes.push(f.name+" +"+amount+" ft. (not in heavy armour)");return;}
+      parts.push([f.name,amount]);total+=amount;
+    });
+    return {total:total,parts:parts,notes:notes,extra:String(raw).replace(/^\s*\d+\s*ft\.?,?\s*/,"")};
+  }
+  function speedText(){var s=speedInfo();return s.total+" ft."+(s.extra?", "+s.extra:"");}
+  function speedWhy(){
+    var s=speedInfo();
+    if(!currentRace())return "Walking speed 30 ft. (default). Choose a species to set this.";
+    var str=s.parts.map(function(p){return p[0]+" "+p[1];}).join("  +  ")+"  =  "+s.total+" ft.";
+    if(s.notes.length)str+="\nNot counted: "+s.notes.join("; ");
+    return str;
   }
 
   function sheetCollapse(items,prefix){
@@ -1604,7 +1651,7 @@
     var sub=((race?race.name+(lin?" ("+lin.name+")":""):"")+" "+state.className+" "+state.level).trim();
 
     var html='<div class="sheet-head"><div class="sheet-portrait" id="sheetPortrait">'+(state.portrait?'<img src="'+state.portrait+'">':"&#9670;")+'</div><div><div class="sheet-name">'+esc(state.name||"Unnamed")+'</div><div class="sheet-sub">'+esc(sub)+"</div></div>"+
-      '<div class="sheet-top">'+topStat("+"+prof,"Prof Bonus",profWhy())+topStat(esc(race&&race.speed?race.speed:"30 ft."),"Speed",speedWhy())+topStat(modStr(init),"Initiative",initWhy())+acStatHtml(ac)+
+      '<div class="sheet-top">'+topStat("+"+prof,"Prof Bonus",profWhy())+topStat(esc(speedText()),"Speed",speedWhy())+topStat(modStr(init),"Initiative",initWhy())+acStatHtml(ac)+
       '<div class="top-stat insp-box" id="inspBox"><div class="tv">'+(state.sheet.inspiration?"&#9733;":"&#9734;")+'</div><div class="tl">Inspiration</div></div>'+
       '<div class="top-stat sheet-hp"><div class="tv"><input type="number" id="hpCur" value="'+esc(state.sheet.hpCurrent)+'"> / '+(mhp==null?"—":mhp)+'</div><div class="tl">Hit Points</div></div>'+
       '<div class="top-stat"><div class="tv"><input type="number" id="hpTemp" class="stat-inp" value="'+esc(state.sheet.hpTemp||"")+'"></div><div class="tl">Temp HP</div></div>'+
@@ -1892,7 +1939,7 @@
     for(var sk in F.skillFields){var ab=SKILL_ABILITY[sk];setT(F.skillFields[sk],modStr(abMod(totalScore(ab))+(ps[sk]?prof:0)));if(ps[sk])check(F.skillChecks[sk]);}
     setT("Passive",10+abMod(totalScore("Wisdom"))+(ps["Perception"]?prof:0));
     setT("ProfBonus","+"+prof);setT("AC",computeAC());setT("Initiative",modStr(abMod(totalScore("Dexterity"))));
-    setT("Speed",race&&race.speed?race.speed:"30 ft.");
+    setT("Speed",speedText());
     var mhp=maxHP();setT("HPMax",mhp);setT("HPCurrent",state.sheet.hpEdited?state.sheet.hpCurrent:mhp);setT("HPTemp",state.sheet.hpTemp);
     setT("HDTotal",state.level+"d"+state.hdFaces);
     var pf=(state.fdata&&state.fdata.proficiencies)||{};
