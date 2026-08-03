@@ -1,14 +1,33 @@
 (function(){
   "use strict";
-  var state={edition:null,name:"",className:null,source:null,slug:null,hdFaces:null,level:1,manualHp:null,subclassName:null,fdata:null,choices:{},openPanels:{},
-             background:null,bgIsCustom:false,bgCustomName:"",bgCustomDesc:"",bgChoices:{},details:{alignment:"",faith:"",lifestyle:""},
-             race:null,raceLineage:null,raceChoices:{},
-             abilities:{method:"pointbuy",base:{Strength:8,Dexterity:8,Constitution:8,Intelligence:8,Wisdom:8,Charisma:8},assign:{},other:{},override:{},rolled:null},
-             equipment:{mode:"equipment",starting:{},startingAdded:false,inventory:[],currency:{pp:0,gp:0,ep:0,sp:0,cp:0},filterType:"",filterQ:""},
-             spells:{cantrips:[],spells:[],levelFilter:"",q:""},customLanguages:[],portrait:null,
-             sheet:{hpCurrent:null,hpTemp:"",res:{},hpEdited:false,invQ:"",invAdd:"",xp:"",inspiration:false,deathSucc:0,deathFail:0,dark:false}};
   function freshEquipment(){return {mode:"equipment",starting:{},startingAdded:false,inventory:[],currency:{pp:0,gp:0,ep:0,sp:0,cp:0},filterType:"",filterQ:""};}
   function freshSheet(){return {hpCurrent:null,hpTemp:"",res:{},hpEdited:false,invQ:"",invAdd:"",xp:"",inspiration:false,deathSucc:0,deathFail:0,dark:false};}
+  // Single source of truth for a pristine character. Used at start-up and by "start over".
+  function freshCharacter(){
+    return {edition:null,name:"",className:null,source:null,slug:null,hdFaces:null,level:1,manualHp:null,subclassName:null,fdata:null,choices:{},openPanels:{},
+            background:null,bgIsCustom:false,bgCustomName:"",bgCustomDesc:"",bgChoices:{},details:{alignment:"",faith:"",lifestyle:""},
+            race:null,raceLineage:null,raceChoices:{},
+            abilities:{method:"pointbuy",base:{Strength:8,Dexterity:8,Constitution:8,Intelligence:8,Wisdom:8,Charisma:8},assign:{},other:{},override:{},rolled:null},
+            equipment:freshEquipment(),
+            spells:{cantrips:[],spells:[],levelFilter:"",q:""},customLanguages:[],portrait:null,
+            sheet:freshSheet()};
+  }
+  var state=freshCharacter();
+  // Wipe every character field in place (keeping the same state object) and reset the form controls.
+  function resetCharacter(){
+    var f=freshCharacter(),k;
+    for(k in state)if(state.hasOwnProperty(k))delete state[k];
+    for(k in f)state[k]=f[k];
+    var n=$("charName");if(n)n.value="";
+    var cn=$("bgCustomName");if(cn)cn.value="";
+    var cd=$("bgCustomDesc");if(cd)cd.value="";
+    var cs=$("classSelect");if(cs)cs.value="";
+    var am=$("abilityMethod");if(am)am.value="pointbuy";
+    var hr=$("hpEditRow");if(hr)hr.classList.add("hidden");
+    document.body.classList.remove("dark");
+    populateLevels();
+    $("featTitle").textContent="Class Features";
+  }
   var ABILITIES=["Strength","Dexterity","Constitution","Intelligence","Wisdom","Charisma"];
   var STD_LANGS=["Common","Dwarvish","Elvish","Giant","Gnomish","Goblin","Halfling","Orc"];
   var EXOTIC_LANGS=["Abyssal","Celestial","Deep Speech","Draconic","Infernal","Primordial","Sylvan","Undercommon"];
@@ -1721,21 +1740,19 @@
   /* ---------- events ---------- */
   document.querySelectorAll(".ed-card").forEach(function(card){
     card.addEventListener("click",function(){
-      state.edition=card.getAttribute("data-edition");
-      $("editionTag").textContent=editionLabel(state.edition);
-      populateClasses();
-      state.className=null;state.source=null;state.hdFaces=null;state.slug=null;state.manualHp=null;state.subclassName=null;state.fdata=null;state.choices={};state.openPanels={};
-      state.background=null;state.bgIsCustom=false;state.bgChoices={};
-      state.race=null;state.raceLineage=null;state.raceChoices={};
-      state.equipment=freshEquipment();
-      state.spells={cantrips:[],spells:[],levelFilter:"",q:""};state.customLanguages=[];state.portrait=null;
-      state.sheet=freshSheet();
-      $("classSelect").value="";
-      populateBackgrounds();populateRaces();
+      var ed=card.getAttribute("data-edition");
+      resetCharacter();                      // always start an edition with a clean slate
+      state.edition=ed;
+      $("editionTag").textContent=editionLabel(ed);
+      populateClasses();populateBackgrounds();populateRaces();
       showBuild();render();
     });
   });
-  $("changeEdition").addEventListener("click",showEdition);
+  $("changeEdition").addEventListener("click",function(){
+    resetCharacter();                       // "start over" must forget the loaded/built character
+    $("stepsMenu").classList.remove("open");
+    showEdition();
+  });
   $("charName").addEventListener("input",function(e){state.name=e.target.value;});
   $("charPortrait").addEventListener("click",function(){$("portraitFile").click();});
   $("portraitFile").addEventListener("change",function(e){if(e.target.files&&e.target.files[0])processPortrait(e.target.files[0]);e.target.value="";});
