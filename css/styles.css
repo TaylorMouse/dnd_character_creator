@@ -355,6 +355,7 @@ body.dark .ac-edit{background:#262626;border-color:#4a4a4a}
 .lang-edit{margin-top:8px}
 .lang-chip{display:inline-block;background:#eef2ff;border:1px solid #cdd8f5;border-radius:999px;padding:2px 8px;font-size:12px;margin:0 4px 4px 0}
 .lang-chip .lang-x{cursor:pointer;color:var(--accent);font-weight:800;margin-left:2px}
+#langPick{margin-top:6px;font-size:13px;padding:6px 8px}
 .lang-add{display:flex;gap:6px;margin-top:6px}
 .lang-add input{flex:1;padding:6px 8px;font-size:13px}
 .cur-inline{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}

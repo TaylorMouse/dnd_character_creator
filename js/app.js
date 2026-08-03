@@ -684,6 +684,14 @@
     var list=(window.CC_BACKGROUNDS&&window.CC_BACKGROUNDS[state.edition])||[];
     return list.filter(function(b){return b.name===state.background.name&&b.source===state.background.source;})[0]||null;
   }
+  function officialLanguages(){
+    var L=window.CC_LANGUAGES;
+    if(L&&L.length)return L;
+    var out=[];
+    STD_LANGS.forEach(function(x){out.push({name:x,type:"standard",core:true});});
+    EXOTIC_LANGS.forEach(function(x){out.push({name:x,type:"exotic",core:true});});
+    return out;
+  }
   // languages, alphabetical, tagged with type; value stays the bare name
   function langPool(){
     var out=[];
@@ -1955,9 +1963,22 @@
     var senses=(lin&&lin.senses&&lin.senses.length)?lin.senses:(race?race.senses:[]);
     var fd=state.fdata,pf=fd.proficiencies||{},langs=languagesAll();
     var langChips=(state.customLanguages||[]).map(function(l,i){return '<span class="lang-chip">'+esc(l)+' <span class="lang-x" data-i="'+i+'">&times;</span></span>';}).join("");
+    var known={};langs.forEach(function(l){known[String(l).toLowerCase()]=1;});
+    var GROUPS=[["standard","Standard"],["exotic","Exotic"],["secret","Secret"],["other","Regional & other"]];
+    var langOpts='<option value="">— Add an official language —</option>';
+    GROUPS.forEach(function(g){
+      var items=officialLanguages().filter(function(x){return x.type===g[0]&&!known[x.name.toLowerCase()];});
+      if(!items.length)return;
+      langOpts+='<optgroup label="'+esc(g[1])+'">'+items.map(function(x){
+        return '<option value="'+esc(x.name)+'">'+esc(x.name)+"</option>";
+      }).join("")+"</optgroup>";
+    });
     var profBody='<div class="prof-blk"><div class="pl">Armor</div>'+renderTags(pf.armor||"None")+'</div><div class="prof-blk"><div class="pl">Weapons</div>'+renderTags(pf.weapons||"None")+'</div><div class="prof-blk"><div class="pl">Tools</div>'+renderTags(pf.tools||"None")+'</div>'+
       '<div class="prof-blk"><div class="pl">Languages</div>'+esc(langs.join(", ")||"—")+
-      '<div class="lang-edit">'+langChips+'<div class="lang-add"><input type="text" id="custLang" placeholder="Add a language…"><button class="btn" id="addLang">Add</button></div></div></div>';
+      '<div class="lang-edit">'+langChips+
+        '<select id="langPick">'+langOpts+'</select>'+
+        '<div class="lang-add"><input type="text" id="custLang" placeholder="…or type a custom one"><button class="btn" id="addLang">Add</button></div>'+
+      "</div></div>";
     var left=shCard("Ability Scores",'<div class="abil-block">'+abilCells+"</div>")+shCard("Saving Throws",saveRows)+shCard("Senses",senses.length?senses.join("<br>"):"Normal vision")+shCard("Proficiencies & Languages",profBody);
 
     // MIDDLE: skills + passives
@@ -2105,6 +2126,10 @@
     Array.prototype.forEach.call(host.querySelectorAll(".pip"),function(p){p.addEventListener("click",function(){var k=p.getAttribute("data-k");state.sheet.res[k]=!state.sheet.res[k];p.classList.toggle("used");});});
     Array.prototype.forEach.call(host.querySelectorAll(".sc-h"),function(h){h.addEventListener("click",function(){h.parentNode.classList.toggle("open");});});
     // custom languages
+    var lp=host.querySelector("#langPick");
+    if(lp)lp.addEventListener("change",function(){
+      if(lp.value){state.customLanguages.push(lp.value);render();}
+    });
     var cl=host.querySelector("#custLang"),al=host.querySelector("#addLang");
     function addLang(){var v=cl&&cl.value.trim();if(v){state.customLanguages.push(v);render();}}
     if(al)al.addEventListener("click",addLang);

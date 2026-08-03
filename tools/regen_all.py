@@ -9,7 +9,7 @@ With no argument each generator falls back to its own default data root
 import subprocess, sys, os
 
 SCRIPTS = ["gen_features.py", "gen_races.py", "gen_backgrounds.py", "gen_feats.py",
-           "gen_items.py", "gen_spells.py", "gen_starting.py", "gen_resources.py", "gen_sources.py"]
+           "gen_items.py", "gen_spells.py", "gen_starting.py", "gen_resources.py", "gen_sources.py", "gen_languages.py"]
 
 here = os.path.dirname(os.path.abspath(__file__))
 extra = sys.argv[1:2]

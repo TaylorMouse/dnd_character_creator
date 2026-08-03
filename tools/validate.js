@@ -37,7 +37,7 @@ var ROOT=fso.GetParentFolderName(fso.GetParentFolderName(WScript.ScriptFullName)
 
 // ---------- load data + app ----------
 var dataFiles=["data-classes.js","data-feats.js","data-backgrounds.js","data-races.js",
-               "data-items.js","data-starting.js","data-spells.js","data-spellcasting.js","data-resources.js","data-speed.js","data-condmods.js"];
+               "data-items.js","data-starting.js","data-spells.js","data-spellcasting.js","data-resources.js","data-speed.js","data-condmods.js","data-languages.js"];
 for(var i=0;i<dataFiles.length;i++) eval(readFile(ROOT+"resources\\"+dataFiles[i]));
 // every generated per-class feature file
 var featDir=fso.GetFolder(ROOT+"resources\\features"),fe=new Enumerator(featDir.Files);
@@ -53,7 +53,7 @@ app=app.replace("populateLevels();showEdition();",
  "needsCustomAsi:needsCustomAsi,currentRace:currentRace,currentLineage:currentLineage,"+
  "featAsiPicks:featAsiPicks,featAsiPending:featAsiPending,asiResolved:asiResolved,"+
  "featureAttacks:featureAttacks,featureSkillChoice:featureSkillChoice,featureSkillPicks:featureSkillPicks,"+
- "featuresAndTraits:featuresAndTraits,condNotesFor:condNotesFor};");
+ "featuresAndTraits:featuresAndTraits,condNotesFor:condNotesFor,officialLanguages:officialLanguages,languagesAll:languagesAll};");
 eval(app);
 var C=window.__cc,S=C.state;
 
@@ -423,6 +423,24 @@ setup("monk-classic","Monk",17);
 checkTrue("  Monk 17 uses 1d10",noteStr({melee:true,unarmed:true}).indexOf("1d10")>=0);
 setup("fighter-classic","Fighter",6);
 check("  a class with none gets no notes",noteStr({melee:true,str:true,finesse:true,unarmed:true}),"");
+
+
+// =====================================================================
+section("7i. Official language list");
+setup("bard-classic","Bard",5);
+var LL=C.officialLanguages();
+checkTrue("  the list is generated, not the built-in 16",LL.length>100);
+function hasLang(nm){for(var i=0;i<LL.length;i++)if(LL[i].name===nm)return LL[i];return null;}
+checkTrue("  contains Common",!!hasLang("Common"));
+checkTrue("  contains Draconic",!!hasLang("Draconic"));
+checkTrue("  contains Thieves' Cant",!!hasLang("Thieves' Cant"));
+if(hasLang("Common"))check("  Common is standard",hasLang("Common").type,"standard");
+if(hasLang("Draconic"))check("  Draconic is exotic",hasLang("Draconic").type,"exotic");
+if(hasLang("Thieves' Cant"))check("  Thieves' Cant is secret",hasLang("Thieves' Cant").type,"secret");
+check("  the 16 PHB core languages are flagged",(function(){var n=0;for(var i=0;i<LL.length;i++)if(LL[i].core)n++;return n;})(),16);
+// a custom language still works and shows up
+S.customLanguages=["Tedlenese"];
+checkTrue("  a custom language is included",C.languagesAll().indexOf("Tedlenese")>=0);
 
 // =====================================================================
 section("8. Data integrity");
