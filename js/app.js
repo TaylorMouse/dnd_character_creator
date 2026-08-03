@@ -665,6 +665,59 @@
     return race.lineages.filter(function(l){return l.name===state.raceLineage;})[0]||null;
   }
   function raceChoiceCount(group,count){var n=0;for(var i=0;i<count;i++)if(state.raceChoices[group+":"+i])n++;return n;}
+
+  /* ---------- custom origin ability increases ----------
+     Many 2014-era species (MPMM, MOT, AAG, and PHB Human) carry no fixed ability
+     increase: the player allocates them ("Customizing Your Origin"). 2024 species
+     get theirs from the background instead, so this only applies to classic. */
+  var CUSTOM_ASI_MODES={"2-1":[2,1],"1-1-1":[1,1,1],"all":[1,1,1,1,1,1]};
+  function needsCustomAsi(race,lin){
+    if(!race||state.edition!=="classic")return false;
+    var ab=combineAbil(race.ability,lin?lin.ability:{fixed:{},choose:[]});
+    for(var k in ab.fixed)return false;
+    return !ab.choose.length;
+  }
+  function customAsiPicks(){
+    var mode=state.raceChoices["race:custom:mode"];
+    if(!mode||!CUSTOM_ASI_MODES[mode])return [];
+    var w=CUSTOM_ASI_MODES[mode],out=[];
+    if(mode==="all"){ABILITIES.forEach(function(a){out.push({ability:a,amount:1});});return out;}
+    for(var i=0;i<w.length;i++){
+      var a=state.raceChoices["race:custom:a"+i];
+      if(a)out.push({ability:a,amount:w[i]});
+    }
+    return out;
+  }
+  function customAsiHtml(){
+    var mode=state.raceChoices["race:custom:mode"]||"";
+    var opts=[["","— Choose an arrangement —"],["2-1","+2 to one ability, +1 to another"],
+              ["1-1-1","+1 to three different abilities"],["all","+1 to all six (2014 Human)"]];
+    var html='<div class="origin-picker"><label>Ability score increases (custom origin)</label>'+
+      '<select class="race-custom-mode">'+opts.map(function(o){
+        return '<option value="'+o[0]+'"'+(mode===o[0]?" selected":"")+'>'+esc(o[1])+"</option>";
+      }).join("")+"</select>";
+    if(mode&&mode!=="all"){
+      var w=CUSTOM_ASI_MODES[mode];
+      for(var i=0;i<w.length;i++){
+        var cur=state.raceChoices["race:custom:a"+i]||"",others=[];
+        for(var j=0;j<w.length;j++){if(j!==i){var v=state.raceChoices["race:custom:a"+j];if(v)others.push(v);}}
+        html+='<select class="race-custom-abil" data-idx="'+i+'"><option value="">— Ability (+'+w[i]+') —</option>'+
+          ABILITIES.map(function(a){
+            return '<option value="'+a+'"'+(others.indexOf(a)>=0?" disabled":"")+(cur===a?" selected":"")+">"+a+" +"+w[i]+"</option>";
+          }).join("")+"</select>";
+      }
+    }
+    if(mode==="all")html+='<div class="choice-desc">+1 to Strength, Dexterity, Constitution, Intelligence, Wisdom and Charisma.</div>';
+    return html+"</div>";
+  }
+  function customAsiPending(){
+    var mode=state.raceChoices["race:custom:mode"];
+    if(!mode)return true;
+    if(mode==="all")return false;
+    var w=CUSTOM_ASI_MODES[mode];
+    for(var i=0;i<w.length;i++)if(!state.raceChoices["race:custom:a"+i])return true;
+    return false;
+  }
   function raceSelectHtml(group,pool,count,label){
     var chosen=[];for(var i=0;i<count;i++)chosen.push(state.raceChoices[group+":"+i]||"");
     var picked=chosen.filter(Boolean).length;
@@ -709,8 +762,11 @@
     s+=line("Speed",(lin&&lin.speed?lin.speed:race.speed)||"—");
     s+=line("Senses",senses.join(", ")||"—");
     var asiParts=[];for(var k in fixed)asiParts.push(k+" +"+fixed[k]);
-    var asiText=(state.edition==="one")?"None from species — your ability increases come from your background (2024 rules)":(asiParts.join(", ")||"None");
+    var custom=needsCustomAsi(race,lin);
+    var asiText=(state.edition==="one")?"None from species — your ability increases come from your background (2024 rules)"
+               :(custom?"You choose them (custom origin)":(asiParts.join(", ")||"None"));
     s+='<p class="prof-line"><b>Ability Score Increase:</b> '+esc(asiText)+"</p>";
+    if(custom){s+=customAsiHtml();if(customAsiPending())pending=true;}
     chooseList.forEach(function(ch,idx){
       var grp="race:"+ch.src+idx;
       s+=raceSelectHtml(grp,ch.c.from,ch.c.count,"Ability increase (+"+ch.c.amount+" to "+ch.c.count+" of your choice)");
@@ -759,6 +815,20 @@
       sel.addEventListener("click",function(e){e.stopPropagation();});
       sel.addEventListener("change",function(e){state.raceChoices[sel.getAttribute("data-group")+":"+sel.getAttribute("data-idx")]=e.target.value||"";render();});
     });
+    Array.prototype.forEach.call(host.querySelectorAll(".race-custom-mode"),function(sel){
+      sel.addEventListener("click",function(e){e.stopPropagation();});
+      sel.addEventListener("change",function(){
+        state.raceChoices["race:custom:mode"]=sel.value||"";
+        for(var i=0;i<6;i++)delete state.raceChoices["race:custom:a"+i];
+        render();
+      });
+    });
+    Array.prototype.forEach.call(host.querySelectorAll(".race-custom-abil"),function(sel){
+      sel.addEventListener("click",function(e){e.stopPropagation();});
+      sel.addEventListener("change",function(){
+        state.raceChoices["race:custom:a"+sel.getAttribute("data-idx")]=sel.value||"";render();
+      });
+    });
     var ls=host.querySelector("#lineageSelect");
     if(ls){
       ls.addEventListener("click",function(e){e.stopPropagation();});
@@ -795,6 +865,7 @@
         var grp="race:"+ch.src+idx;
         for(var i=0;i<ch.c.count;i++){var ab=state.raceChoices[grp+":"+i];if(ab)add(ab,ch.label,ch.c.amount);}
       });
+      customAsiPicks().forEach(function(p){add(p.ability,"Custom origin",p.amount);});
     }
     if(state.fdata){
       state.fdata.classFeatures.forEach(function(f){

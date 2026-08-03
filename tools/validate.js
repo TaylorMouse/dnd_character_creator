@@ -49,7 +49,8 @@ app=app.replace("populateLevels();showEdition();",
  "profBonus:profBonus,maxHP:maxHP,abMod:abMod,totalScore:totalScore,spellInfo:spellInfo,"+
  "proficientSkills:proficientSkills,savingProfs:savingProfs,computeAC:computeAC,"+
  "actionEconomy:actionEconomy,classSpellList:classSpellList,SKILL_ABILITY:SKILL_ABILITY,"+
- "ABILITIES:ABILITIES,maxSpellLevel:maxSpellLevel,speedInfo:speedInfo};");
+ "ABILITIES:ABILITIES,maxSpellLevel:maxSpellLevel,speedInfo:speedInfo,"+
+ "needsCustomAsi:needsCustomAsi,currentRace:currentRace,currentLineage:currentLineage};");
 eval(app);
 var C=window.__cc,S=C.state;
 
@@ -278,6 +279,29 @@ check("  Monk with a shield loses it",C.speedInfo().total,30);
 setup("barbarian-classic","Barbarian",1);
 S.race={name:"Elf",source:"PHB"};S.raceLineage="Wood";
 check("  Wood Elf lineage speed 35",C.speedInfo().total,35);
+
+
+// =====================================================================
+section("7d. Custom-origin ability increases");
+setup("barbarian-classic","Barbarian",6);
+S.race={name:"Shifter",source:"MPMM"};S.raceLineage=null;
+checkTrue("  MPMM species needs a custom allocation",C.needsCustomAsi(C.currentRace(),null));
+check("  Con before allocating",C.totalScore("Constitution"),13);
+S.raceChoices["race:custom:mode"]="2-1";
+S.raceChoices["race:custom:a0"]="Constitution";S.raceChoices["race:custom:a1"]="Strength";
+check("  +2 Con applied",C.totalScore("Constitution"),15);
+check("  +1 Str applied",C.totalScore("Strength"),16);
+S.raceChoices["race:custom:mode"]="all";
+check("  +1 to all six: Charisma",C.totalScore("Charisma"),9);
+// species with a fixed increase must not offer the allocator
+setup("barbarian-classic","Barbarian",6);
+S.race={name:"Dwarf",source:"PHB"};S.raceLineage=null;
+check("  Dwarf keeps its fixed Con +2",C.totalScore("Constitution"),15);
+checkTrue("  ...and offers no allocator",!C.needsCustomAsi(C.currentRace(),null));
+// 2024 species get increases from the background, never here
+setup("barbarian-one","Barbarian",6);
+S.race={name:"Dwarf",source:"XPHB"};S.raceLineage=null;
+checkTrue("  2024 species offers no allocator",!C.needsCustomAsi(C.currentRace(),null));
 
 // =====================================================================
 section("8. Data integrity");
