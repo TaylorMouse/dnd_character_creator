@@ -1,7 +1,7 @@
 (function(){
   "use strict";
   function freshEquipment(){return {mode:"equipment",starting:{},startingAdded:false,inventory:[],currency:{pp:0,gp:0,ep:0,sp:0,cp:0},filterType:"",filterQ:""};}
-  function freshSheet(){return {hpCurrent:null,hpTemp:"",res:{},hpEdited:false,invQ:"",invAdd:"",xp:"",inspiration:false,deathSucc:0,deathFail:0,dark:false,acOther:"",acOverride:"",acEditOpen:false};}
+  function freshSheet(){return {hpCurrent:null,hpTemp:"",res:{},hpEdited:false,invQ:"",invAdd:"",xp:"",inspiration:false,deathSucc:0,deathFail:0,dark:false,acOther:"",acOverride:"",acEditOpen:false,active:{},conc:""};}
   // Single source of truth for a pristine character. Used at start-up and by "start over".
   function freshCharacter(){
     return {edition:null,name:"",className:null,source:null,slug:null,hdFaces:null,level:1,manualHp:null,subclassName:null,fdata:null,choices:{},openPanels:{},
@@ -1287,6 +1287,8 @@
     opts.forEach(function(o){if(o.total>best.total)best=o;});
     var finalParts=best.parts.slice(),total=best.total;
     if(shieldBonus){finalParts.push([shield.name,shieldBonus]);total+=shieldBonus;}
+    var fxt=fxTotals();                                  // e.g. Bladesong while it is on
+    if(fxt.ac){finalParts.push([fxt.sources.ac.join(" + "),fxt.ac]);total+=fxt.ac;}
     var other=parseInt(state.sheet.acOther,10)||0;
     if(other){finalParts.push(["Other",other]);total+=other;}
     var ov=state.sheet.acOverride;
@@ -1643,6 +1645,15 @@
         if(!seen["c"+c]){seen["c"+c]=1;out.condImmune.push(capital(c));}
       }
     });
+    var ft=fxTotals();
+    out.fx=[];
+    if(ft.resist.length)out.fx.push({text:"Resistance to "+ft.resist.join(", ")+" damage",from:ft.sources.resist.join(", ")});
+    ft.advAbility.forEach(function(a){
+      out.fx.push({text:"Advantage on "+a+" checks and saving throws",from:ft.sources.adv.join(", ")});
+    });
+    fxActive().forEach(function(e){
+      if(e.blocked)out.fx.push({text:e.name+" grants nothing while you wear heavy armour",from:e.name,off:true});
+    });
     return out;
   }
   function defencesHtml(){
@@ -1654,6 +1665,10 @@
     h+=line("Condition Immunities",d.condImmune);
     d.adv.forEach(function(a){
       h+='<p class="prof-line def-adv" title="'+esc(a.from)+'"><span class="def-mark">●</span> '+esc(a.text)+"</p>";
+    });
+    (d.fx||[]).forEach(function(a){       // only while the effect is switched on
+      h+='<p class="prof-line def-fx'+(a.off?" def-fx-off":"")+'" title="'+esc(a.from)+'"><span class="def-mark">●</span> '+esc(a.text)+
+         (a.off?"":' <span class="fx-while">'+esc(a.from)+"</span>")+"</p>";
     });
     return h;
   }
@@ -1672,6 +1687,11 @@
       var a=resolveArmor(i);if(!a)return;
       var info=itemInfo(i.name,i.source)||i;
       if(info.stealthDis)note("Stealth","dis",(info.name||i.name),false);
+    });
+    var ftot=fxTotals();
+    ftot.advAbility.forEach(function(ab){              // e.g. Strength checks while raging
+      var src=ftot.sources.adv.join(", ");
+      for(var s in SKILL_ABILITY)if(SKILL_ABILITY[s]===ab)note(s,"adv",src,false);
     });
     featuresAndTraits().forEach(function(f){
       var txt=plainTags(entryText(f.entries||""));
@@ -1788,7 +1808,11 @@
       var txt=entryText(f.entries||"");
       if(!cfg){
         var m=/speed increases by (\d+) f/i.exec(txt);          // situational boost
-        if(m&&!seen["n"+f.name]){seen["n"+f.name]=1;notes.push(f.name+" +"+m[1]+" ft. (situational)");}
+        if(m&&!seen["n"+f.name]){
+          seen["n"+f.name]=1;
+          if(fxIsOn(f.name)&&fxQualifies(f))parts.push([f.name+" (active)",parseInt(m[1],10)]);   // switched on, so it counts
+          else notes.push(f.name+" +"+m[1]+" ft. (situational)");
+        }
         return;
       }
       if(seen[f.name])return;seen[f.name]=1;
@@ -1800,6 +1824,7 @@
       if(cfg.notHeavy&&w.body==="heavy"){notes.push(f.name+" +"+amount+" ft. (not in heavy armour)");return;}
       parts.push([f.name,amount]);total+=amount;
     });
+    total=0;parts.forEach(function(pp){total+=pp[1];});     // recount, active effects may have added
     return {total:total,parts:parts,notes:notes,extra:String(raw).replace(/^\s*\d+\s*ft\.?,?\s*/,"")};
   }
   function speedText(){var s=speedInfo();return s.total+" ft."+(s.extra?", "+s.extra:"");}
@@ -1816,7 +1841,9 @@
     return items.map(function(it,i){
       var d=(it.entries&&it.entries.length)?it.entries.map(renderEntry).join(""):'<p class="res-sub">No description.</p>';
       var why=it.origin?' title="'+esc(it.origin)+'"':"";
-      return '<div class="sc-item"><div class="sc-h'+(it.origin?" has-origin":"")+'"'+why+' data-tgt="'+prefix+i+'">'+esc(it.name)+'<span class="sc-chev">&#9662;</span></div><div class="sc-d">'+d+"</div></div>";
+      var box=it.fx?'<span class="fx-box'+(fxIsOn(it.fx)?" on":"")+'" data-fx-set="'+esc(it.fx)+'" title="'+
+                    esc(fxIsOn(it.fx)?"Active — click to end":"Click when you use this")+'"></span>':"";
+      return '<div class="sc-item'+(it.fx&&fxIsOn(it.fx)?" fx-live":"")+'"><div class="sc-h'+(it.origin?" has-origin":"")+'"'+why+' data-tgt="'+prefix+i+'">'+box+esc(it.name)+'<span class="sc-chev">&#9662;</span></div><div class="sc-d">'+d+"</div></div>";
     }).join("");
   }
   function spellItems(keys){
@@ -1838,7 +1865,9 @@
     for(i=0;i<hdTotal;i++)if(res["hd:"+i])usedHd++;
     var regain=Math.max(1,Math.floor(hdTotal/2)),keepUsed=Math.max(0,usedHd-regain);
     var nr={};for(i=0;i<keepUsed;i++)nr["hd:"+i]=true;   // clear all slots/resources; regain half the spent hit dice
-    state.sheet.res=nr;render();
+    state.sheet.res=nr;
+    state.sheet.active={};state.sheet.conc="";           // nothing survives a long rest
+    render();
   }
   function shortRest(){
     var info=spellInfo(),res=state.sheet.res,k,i;
@@ -1848,6 +1877,7 @@
     var sr=["Ki Points","Focus Points","Channel Divinity","Wild Shape"];
     if(state.level>=5)sr.push("Bardic Inspiration");   // Bard: Font of Inspiration (level 5+)
     for(k in res){for(i=0;i<sr.length;i++){if(k.indexOf(sr[i]+":")===0){delete res[k];break;}}}
+    state.sheet.active={};state.sheet.conc="";           // an hour's rest ends any effect too
     render();
   }
   // summarise the player's actual choices for a feature (for the sheet's Features list)
@@ -1964,23 +1994,160 @@
     rsp.forEach(function(sp){var s=spellByName(sp.name);if(s&&s.time&&s.time.indexOf("bonus")>=0){var c={};for(var kk in s)c[kk]=s[kk];c._origin=(race?race.name:"species")+" — innate spell";push(out.bonus,"b"+s.name,c);}});
     return out;
   }
+  /* ---------- active effects ----------
+     Rage, Bladesong, Giant's Might and the like are switched on in play and then last
+     until they end. Both halves are read from the feature's own text: it counts as an
+     effect when the text says it is activated and that it lasts, and what it grants is
+     parsed from the same text. So a toggle is not a label - while it is on, the numbers
+     on the sheet are recalculated with it. */
+  var FX_ON=/\b(?:as an? (?:bonus )?action|use (?:a|an|your) (?:bonus )?action|when you (?:enter|use|activate))/i;
+  var FX_LASTS=/\b(?:for 1 minute|for 10 minutes|for 1 hour|lasts? (?:for )?\d|while (?:raging|it lasts)|until (?:your |the |it )?(?:rage ends|next turn|start of your next turn|end of your next turn|ends?|you (?:end|dismiss|drop))|until it ends)/i;
+  function fxMods(name,txt){
+    var m={dmg:0,dmgDice:"",ac:0,acAbility:"",speed:0,resist:[],advAbility:[],notHeavy:false},x;
+    // level-correct damage bonus from the class table (Rage Damage), else a flat one in the text
+    condMods().forEach(function(cm){
+      if(name.toLowerCase().indexOf(cm.kind.toLowerCase())<0)return;
+      var v=cm.values[state.level-1];
+      if(typeof v==="number")m.dmg=v;
+    });
+    if(!m.dmg&&(x=/\+(\d+) bonus to the damage roll/i.exec(txt)))m.dmg=parseInt(x[1],10);
+    // some grant dice instead of a flat bonus, which cannot fold into one number
+    if((x=/(?:extra|additional) (\d+d\d+) damage/i.exec(txt))||(x=/deal an extra (\d+d\d+)/i.exec(txt)))m.dmgDice=x[1];
+    if((x=/bonus to (?:your )?AC equal to your (strength|dexterity|constitution|intelligence|wisdom|charisma) modifier/i.exec(txt)))m.acAbility=ABIL_WORD[x[1].toLowerCase()];
+    else if((x=/\+(\d+) bonus to (?:your )?AC/i.exec(txt))||(x=/(?:your )?AC increases by (\d+)/i.exec(txt)))m.ac=parseInt(x[1],10);
+    if((x=/(?:walking )?speed increases by (\d+) f/i.exec(txt)))m.speed=parseInt(x[1],10);
+    if((x=/resistance to ([a-z,\s]+?) damage/i.exec(txt)))
+      m.resist=x[1].split(/,|\band\b/).map(function(s){return capital(s.trim());}).filter(function(s){return s;});
+    var re=/advantage on (strength|dexterity|constitution|intelligence|wisdom|charisma) (?:checks|saving throws)/gi,mm;
+    while((mm=re.exec(txt))){var a=ABIL_WORD[mm[1].toLowerCase()];if(m.advAbility.indexOf(a)<0)m.advAbility.push(a);}
+    m.notHeavy=/if you aren'?t wearing heavy armor/i.test(txt);
+    return m;
+  }
+  /* A feature's own text, skipping the named options it offers. The Shifter's Shifting
+     trait lists all four lineages' benefits, so reading them all would hand a Longtooth
+     shifter Swiftstride's speed; the lineage's own trait carries the right one. Plain
+     bullet lists are kept, because that is where Rage states what it grants. */
+  function fxText(e){
+    if(typeof e==="string")return e+" ";
+    if(!e)return "";
+    if(e instanceof Array){var s="";for(var i=0;i<e.length;i++)s+=fxText(e[i]);return s;}
+    if(typeof e==="object"){
+      if(e.type==="table")return "";                       // a roll table, not a rule
+      if(e.name&&(e.type==="item"||e.type==="entries"&&e.isOption))return "";  // one option among several
+      var s="",k;for(k in e){if(k==="type"||k==="name"||k==="source")continue;s+=fxText(e[k]);}
+      return s;
+    }
+    return "";
+  }
+  // "Turn the Unholy" is activated and lasts a minute, but the minute happens to the
+  // enemy. An effect is only yours if the text says what you gain from it.
+  var FX_SELF=/\byou (?:also |now |magically |then )*(?:gain|have|add|can add|are|deal|give|know|become)\b|\byour [a-z ]{0,14}(?:AC|speed|attacks?|damage)\b/i;
+  function fxQualifies(f){
+    if(!f||!f.name)return false;
+    var txt=plainTags(fxText(f.entries||""));
+    return FX_ON.test(txt)&&FX_LASTS.test(txt)&&FX_SELF.test(txt);
+  }
+  // every effect this character could switch on
+  function fxAvailable(){
+    var all=[],seen={};
+    featuresAndTraits().forEach(function(f){
+      if(!f.name||seen[f.name]||!fxQualifies(f))return;
+      var txt=plainTags(fxText(f.entries||""));
+      all.push({key:f.name,name:f.name,origin:f._origin||"",mods:fxMods(f.name,txt)});
+    });
+    /* A lineage restates its species' feature under a fuller name ("Shifting" and
+       "Shifting (Longtooth)"). Offer one toggle: the one that actually grants something,
+       and otherwise the more specific name. */
+    var byBase={};
+    all.forEach(function(e){
+      var base=e.name.replace(/\s*\([^)]*\)\s*$/,""),cur=byBase[base];
+      if(!cur){byBase[base]=e;return;}
+      function score(x){var m=x.mods;return (m.dmg||m.ac||m.acAbility||m.speed||m.resist.length||m.advAbility.length)?2:0;}
+      if(score(e)>score(cur)||(score(e)===score(cur)&&e.name.length>cur.name.length))byBase[base]=e;
+    });
+    var out=[];
+    all.forEach(function(e){if(byBase[e.name.replace(/\s*\([^)]*\)\s*$/,"")]===e)out.push(e);});
+    return out;
+  }
+  function fxIsOn(key){return !!(state.sheet.active&&state.sheet.active[key]);}
+  // the effects that are on right now, with anything they cannot grant filtered out
+  function fxActive(){
+    var heavy=wornArmor().body==="heavy";
+    return fxAvailable().filter(function(e){return fxIsOn(e.key);}).map(function(e){
+      var c={key:e.key,name:e.name,origin:e.origin,blocked:e.mods.notHeavy&&heavy,mods:e.mods};
+      return c;
+    });
+  }
+  // summed modifiers from every active effect that is actually granting them
+  function fxTotals(){
+    var t={dmg:0,ac:0,speed:0,resist:[],advAbility:[],sources:{dmg:[],ac:[],speed:[],resist:[],adv:[]}};
+    fxActive().forEach(function(e){
+      if(e.blocked)return;
+      var m=e.mods,acv=m.ac+(m.acAbility?abMod(totalScore(m.acAbility)):0);
+      if(m.dmg){t.dmg+=m.dmg;t.sources.dmg.push(e.name);}
+      if(acv){t.ac+=acv;t.sources.ac.push(e.name);}
+      if(m.speed){t.speed+=m.speed;t.sources.speed.push(e.name);}
+      if(m.resist.length&&t.sources.resist.indexOf(e.name)<0)t.sources.resist.push(e.name);
+      m.resist.forEach(function(r){if(t.resist.indexOf(r)<0)t.resist.push(r);});
+      if(m.advAbility.length&&t.sources.adv.indexOf(e.name)<0)t.sources.adv.push(e.name);
+      m.advAbility.forEach(function(a){if(t.advAbility.indexOf(a)<0)t.advAbility.push(a);});
+    });
+    return t;
+  }
+  // the spell being concentrated on, if it is still one the character knows
+  function concSpell(){
+    var k=state.sheet.conc;if(!k)return null;
+    var s=spellByKey(k);
+    return (s&&s.conc)?s:null;
+  }
+  function concOptions(){
+    var out=[],seen={};
+    state.spells.cantrips.concat(state.spells.spells).forEach(function(k){
+      var s=spellByKey(k);
+      if(s&&s.conc&&!seen[k]){seen[k]=1;out.push({key:k,label:s.name+(s.level?" ("+ordinal(s.level)+")":" (Cantrip)")});}
+    });
+    var race=currentRace(),lin=race?currentLineage(race):null,rsp=[];
+    if(race)rsp=rsp.concat(race.spells||[]);if(lin)rsp=rsp.concat(lin.spells||[]);
+    rsp.forEach(function(sp){var s=spellByName(sp.name);if(!s||!s.conc)return;var k=s.name+"|"+s.source;
+      if(!seen[k]){seen[k]=1;out.push({key:k,label:s.name+" (innate)"});}});
+    out.sort(function(a,b){return a.label.localeCompare(b.label);});
+    return out;
+  }
+
   /* ---------- conditional damage ----------
      Rage damage, Sneak Attack and the Martial Arts die are situational, so they are
      shown as notes on the attacks they can apply to rather than folded into the total. */
   function condMods(){return (window.CC_CONDMODS&&window.CC_CONDMODS[state.slug])||[];}
+  // damage an active effect adds to this kind of attack; already folded into the total
+  function fxDmgFor(kind){
+    if(!(kind&&kind.melee&&kind.str))return 0;   // the effects that grant damage are Strength melee ones
+    return fxTotals().dmg;
+  }
+  // dice an active effect adds; shown as a note because it cannot fold into the total
+  function fxDiceNotes(kind){
+    if(!(kind&&kind.melee))return [];
+    var out=[];
+    fxActive().forEach(function(e){
+      if(!e.blocked&&e.mods.dmgDice)out.push("+"+e.mods.dmgDice+" "+e.name+" (active)");
+    });
+    return out;
+  }
   function condNotesFor(kind){
     var out=[],lv=state.level-1;
     condMods().forEach(function(m){
       var v=m.values[lv];
       if(v===null||v===undefined||v===0)return;
-      if(m.kind==="rage"&&kind.melee&&kind.str)out.push("+"+v+" while raging");
+      if(m.kind==="rage"&&kind.melee&&kind.str){
+        if(fxDmgFor(kind))return;               // switched on, so it shows in the damage column instead
+        out.push("+"+v+" while raging");
+      }
       if(m.kind==="sneak"&&(kind.finesse||kind.ranged))out.push("+"+v+" Sneak Attack (1/turn)");
       if(m.kind==="martialArts"&&(kind.unarmed||kind.monkWeapon))out.push("Martial Arts die "+v);
     });
     return out;
   }
   function withCond(notes,kind){
-    var c=condNotesFor(kind);
+    var c=fxDiceNotes(kind).concat(condNotesFor(kind));
     if(!c.length)return notes;
     return (notes?notes+" · ":"")+c.join(" · ");
   }
@@ -2039,27 +2206,30 @@
       var props=w.props||[],finesse=props.indexOf("Finesse")>=0,thrown=props.indexOf("Thrown")>=0;
       var mod=(w.wtype==="R"?dexM:(finesse?Math.max(strM,dexM):strM))+w.bonus;
       var range=w.wtype==="R"?(w.range?w.range+" ft.":"Ranged"):(thrown&&w.range?"5 ft. / "+w.range:"5 ft.");
-      var dbonus=(w.wtype==="R"?dexM:(finesse?Math.max(strM,dexM):strM))+w.bonus;
+      var melee=w.wtype!=="R",usesStr=melee&&(!finesse||strM>=dexM);
+      var dbonus=(w.wtype==="R"?dexM:(finesse?Math.max(strM,dexM):strM))+w.bonus
+                 +fxDmgFor({melee:melee,str:usesStr});      // e.g. Rage, while it is switched on
       var dstr=w.dmg+(dbonus>0?"+"+dbonus:(dbonus<0?""+dbonus:""))+" "+dmgAbbr(w.dmgType);
       var notes=props.join(", ");
       if(w.bonus)notes=(notes?notes+" · ":"")+"magic +"+w.bonus;
-      var melee=w.wtype!=="R",usesStr=melee&&(!finesse||strM>=dexM);
       var monkW=melee&&w.weaponCat!=="martial"&&props.indexOf("Two-Handed")<0&&props.indexOf("Heavy")<0;
       notes=withCond(notes,{melee:melee,ranged:!melee,str:usesStr,finesse:finesse,monkWeapon:monkW});
       if(w.att==="optional"&&!it.attuned)notes=(notes?notes+" · ":"")+"not attuned — no magic bonus";
       rows+=row(w.name,w.wtype==="R"?"Ranged Weapon":"Melee Weapon",range,modStr(mod+prof),dstr,notes,
                 "Equipped item"+(it.source?" — "+sourceName(it.source):""),itemEntriesFull(it));
     });
-    rows+=row("Unarmed Strike","Melee","5 ft.",modStr(strM+prof),Math.max(1,1+strM)+" bludgeoning",
+    rows+=row("Unarmed Strike","Melee","5 ft.",modStr(strM+prof),Math.max(1,1+strM+fxDmgFor({melee:true,str:true}))+" bludgeoning",
               withCond("",{melee:true,str:true,unarmed:true}),
               "Available to every character",    // unarmed damage is always at least 1
               ["A punch, kick, head-butt or similar blow, made in place of a weapon attack. "+
                "Every character is proficient with it, and it deals bludgeoning damage equal to "+
                "1 + your Strength modifier — never less than 1."]);
     featureAttacks().forEach(function(a){                 // e.g. Bite / Claws / Tail from Form of the Beast
-      var mod=a.finesse?Math.max(strM,dexM):strM;
+      var usesStr=!a.finesse||strM>=dexM;
+      var mod=a.finesse?Math.max(strM,dexM):strM;                       // attack roll
+      var dm=mod+fxDmgFor({melee:true,str:usesStr});                    // damage only
       rows+=row(a.name,a.parent,a.reach?"10 ft. (reach)":"5 ft.",modStr(mod+prof),
-                a.dmg+(mod>0?"+"+mod:(mod<0?""+mod:""))+" "+a.dmgType,
+                a.dmg+(dm>0?"+"+dm:(dm<0?""+dm:""))+" "+a.dmgType,
                 withCond(a.reach?"Reach":"",{melee:true,str:!a.finesse||strM>=dexM,finesse:a.finesse,unarmed:true}),
                 a.origin?(a.parent+" — "+a.origin):a.parent,
                 a.entries.length?["{@i From "+a.parent+".}"].concat(a.entries):[]);
@@ -2090,6 +2260,30 @@
     if(ae.reaction.length)html+='<div class="ae-sec"><div class="ae-h">Reactions</div>'+sheetCollapse(ae.reaction,"ra")+"</div>";
     html+='<div class="combat-actions"><div class="ca-h">Actions in Combat</div>Attack · Dash · Disengage · Dodge · Grapple · Help · Hide · Influence · Magic · Ready · Search · Shove · Utilize</div>';
     return html;
+  }
+  /* The status bar is a readout, not a control: it lists only what is on right now, so
+     it costs nothing when nothing is. Clicking a pill switches that effect off again. */
+  function fxBarHtml(){
+    var on=fxActive(),cs=concSpell(),pills="";
+    if(!on.length&&!cs)return "";
+    on.forEach(function(e){
+      var m=e.mods,what=[];
+      if(!e.blocked){
+        if(m.dmg)what.push("+"+m.dmg+" damage");
+        if(m.dmgDice)what.push("+"+m.dmgDice+" damage");
+        if(m.ac||m.acAbility)what.push("+"+(m.ac+(m.acAbility?abMod(totalScore(m.acAbility)):0))+" AC");
+        if(m.speed)what.push("+"+m.speed+" ft. speed");
+        if(m.resist.length)what.push("resist "+m.resist.join("/").toLowerCase());
+        m.advAbility.forEach(function(a){what.push("adv. "+ABIL_ABBR[a]);});
+      }else what.push("no benefit in heavy armour");
+      pills+='<span class="fx-pill'+(e.blocked?" fx-blocked":"")+'" data-fx="'+esc(e.key)+'" title="'+
+             esc((e.origin?e.origin+" — ":"")+"Click to end")+'">'+esc(e.name.toUpperCase())+
+             (what.length?' <span class="fx-what">'+esc(what.join(" · "))+"</span>":"")+"</span>";
+    });
+    if(cs)pills+='<span class="fx-pill fx-conc" data-fx-conc="1" title="'+
+      esc("Concentration ends if you cast another concentration spell, are incapacitated, or fail a Constitution save (DC 10, or half the damage taken, whichever is higher). Click to end")+
+      '">CONCENTRATING <span class="fx-what">'+esc(cs.name)+"</span></span>";
+    return '<div class="fx-bar">'+pills+"</div>";
   }
   function deathSavesHtml(){
     var s=state.sheet.deathSucc||0,f=state.sheet.deathFail||0;
@@ -2141,6 +2335,7 @@
       '<div class="top-stat sheet-hp"><div class="tv"><input type="number" id="hpCur" value="'+esc(state.sheet.hpCurrent)+'"> / '+(mhp==null?"—":mhp)+'</div><div class="tl">Hit Points</div></div>'+
       '<div class="top-stat"><div class="tv"><input type="number" id="hpTemp" class="stat-inp" value="'+esc(state.sheet.hpTemp||"")+'"></div><div class="tl">Temp HP</div></div>'+
       '<div class="top-stat"><div class="tv"><input type="number" id="xpInput" class="stat-inp xp-inp" value="'+esc(state.sheet.xp||"")+'"></div><div class="tl">XP</div></div></div></div>'+
+      fxBarHtml()+
       '<div class="ac-edit'+(state.sheet.acEditOpen?"":" hidden")+'" id="acEditRow">'+
         '<span class="ac-edit-lbl">Customise Armor Class</span>'+
         '<label>Other modifier <input type="number" id="acOther" value="'+esc(state.sheet.acOther||"")+'" placeholder="0"></label>'+
@@ -2192,7 +2387,9 @@
 
     // RIGHT: resources, attacks, spells, inventory, features, background
     var res=(window.CC_RESOURCES&&window.CC_RESOURCES[state.slug])||[];
-    var resBody=res.map(function(r){var n=r.values[state.level-1]||0;if(!n)return "";var pips="";for(var i=0;i<n;i++){var k=r.name+":"+i;pips+='<span class="pip'+(state.sheet.res[k]?" used":"")+'" data-k="'+esc(k)+'"></span>';}return '<div style="margin-bottom:10px"><div class="res-name">'+esc(r.name)+' <span class="res-sub">('+n+')</span></div><div class="pips">'+pips+"</div></div>";}).join("");
+    var resBody=res.map(function(r){var n=r.values[state.level-1]||0;if(!n)return "";var pips="";for(var i=0;i<n;i++){var k=r.name+":"+i;pips+='<span class="pip'+(state.sheet.res[k]?" used":"")+'" data-k="'+esc(k)+'"></span>';}var fk="";fxAvailable().forEach(function(e){if(!fk&&r.name.toLowerCase().indexOf(e.key.toLowerCase())===0)fk=e.key;});
+      var rbox=fk?'<span class="fx-box'+(fxIsOn(fk)?" on":"")+'" data-fx-set="'+esc(fk)+'" title="'+esc(fxIsOn(fk)?"Active — click to end":"Click when you use this")+'"></span>':"";
+      return '<div style="margin-bottom:10px"><div class="res-name">'+rbox+esc(r.name)+' <span class="res-sub">('+n+')</span></div><div class="pips">'+pips+"</div></div>";}).join("");
     var cRes=shCard("Class Resources",resBody);
     // actions (weapon attacks, attack cantrips, unarmed, actions in combat)
     var inv=state.equipment.inventory;
@@ -2211,6 +2408,14 @@
     if(rsp.length){
       var rk=[],rseen={};rsp.forEach(function(sp){var s=spellByName(sp.name);if(s&&!rseen[s.name]){rseen[s.name]=1;rk.push(s.name+"|"+s.source);}});
       if(rk.length)spBody+='<div class="spell-lvl-h">Racial / Innate</div>'+sheetCollapse(spellItems(rk),"rc");
+    }
+    var copts=concOptions();
+    if(copts.length){
+      var cur=state.sheet.conc||"";
+      spBody+='<div class="conc-pick"><label for="concSel">Concentrating on</label><select id="concSel">'+
+        '<option value=""'+(cur?"":" selected")+">— nothing —</option>"+
+        copts.map(function(c){return '<option value="'+esc(c.key)+'"'+(c.key===cur?" selected":"")+">"+esc(c.label)+"</option>";}).join("")+
+        "</select>"+(concSpell()?'<div class="conc-note">Ends if you cast another concentration spell, are incapacitated, or fail a DC 10 Constitution save (or half the damage taken, whichever is higher).</div>':"")+"</div>";
     }
     var cSpells=shCard("Spells",spBody);
     var cSlots=shCard("Spell Slots",spellSlotsHtml(info));
@@ -2285,6 +2490,11 @@
     });
     if(race)(race.traits||[]).forEach(function(t){featItems.push({name:t.name,entries:t.entries,origin:race.name+" ("+sourceName(race.source)+") — species trait"});});
     if(lin)(lin.traits||[]).forEach(function(t){featItems.push({name:t.name,entries:t.entries,origin:lin.name+" — lineage trait"});});
+    var fxKeys={};fxAvailable().forEach(function(e){fxKeys[e.key]=1;});
+    featItems.forEach(function(fi){                 // a checkbox beside anything you switch on in play
+      var bare=fi.name.replace(/\s*\[[^\]]*\]\s*$/,"").replace(/\s*\(optional\)\s*$/,"");
+      if(fxKeys[bare])fi.fx=bare;
+    });
     var cFeat=shCard("Features & Traits",sheetCollapse(featItems,"f"));
     // background
     var bg=currentBg(),det=state.details,bgBody="";
@@ -2303,6 +2513,10 @@
       '<br><b>Long rest:</b> full HP, all slots &amp; resources, half your hit dice</div>';
     var cRest=shCard("Rest & Hit Dice",'<div class="rest-btns"><button class="btn ghost" id="shortRest">Short Rest</button><button class="btn" id="longRest">Long Rest</button></div><div class="slot-line"><span class="slot-lvl">Hit Dice '+state.level+"d"+state.hdFaces+'</span><div class="pips">'+hdpips+"</div></div>"+restNote);
 
+    var fxOn=fxActive(),frameCls="sheet-frame";
+    if(fxOn.length)frameCls+=" fx-active";
+    if(concSpell())frameCls+=" fx-conc-on";
+    host.className=frameCls;
     host.innerHTML=html+'<div class="sheet-grid"><div>'+left+"</div><div>"+mid+"</div><div>"+cRes+cSlots+cSpells+"</div><div>"+cAtk+cCur+cInv+"</div><div>"+cRest+cDeath+cFeat+cBg+"</div></div>";
     var spx=host.querySelector("#sheetPortrait");if(spx)spx.addEventListener("click",function(){$("portraitFile").click();});
     var hc=host.querySelector("#hpCur");if(hc)hc.addEventListener("input",function(){state.sheet.hpEdited=true;state.sheet.hpCurrent=parseInt(hc.value,10)||0;});
@@ -2340,6 +2554,21 @@
     Array.prototype.forEach.call(host.querySelectorAll(".pip"),function(p){p.addEventListener("click",function(){var k=p.getAttribute("data-k");state.sheet.res[k]=!state.sheet.res[k];p.classList.toggle("used");});});
     Array.prototype.forEach.call(host.querySelectorAll(".sc-h"),function(h){h.addEventListener("click",function(){h.parentNode.classList.toggle("open");});});
     Array.prototype.forEach.call(host.querySelectorAll(".atk-row.has-desc"),function(r){r.addEventListener("click",function(){r.classList.toggle("open");});});
+    // active effects: the checkbox is the control, the pill is a shortcut to end it
+    Array.prototype.forEach.call(host.querySelectorAll(".fx-box"),function(b){b.addEventListener("click",function(ev){
+      ev.stopPropagation();                                  // do not also collapse the feature
+      var k=b.getAttribute("data-fx-set");
+      state.sheet.active[k]=!state.sheet.active[k];
+      if(!state.sheet.active[k])delete state.sheet.active[k];
+      render();
+    });});
+    Array.prototype.forEach.call(host.querySelectorAll(".fx-pill"),function(pl){pl.addEventListener("click",function(){
+      if(pl.getAttribute("data-fx-conc"))state.sheet.conc="";
+      else delete state.sheet.active[pl.getAttribute("data-fx")];
+      render();
+    });});
+    var csel=host.querySelector("#concSel");
+    if(csel)csel.addEventListener("change",function(){state.sheet.conc=csel.value;render();});
     // custom languages
     var lp=host.querySelector("#langPick");
     if(lp)lp.addEventListener("change",function(){
@@ -2466,6 +2695,8 @@
   function loadCharObj(o){
     if(!o||o._app!=="dnd-cc"){alert("That doesn't look like a saved character file.");return;}
     SAVE_KEYS.forEach(function(k){if(o[k]!==undefined)state[k]=o[k];});
+    var ds=freshSheet(),sk;                       // a file saved by an older build lacks newer keys
+    for(sk in ds)if(state.sheet[sk]===undefined)state.sheet[sk]=ds[sk];
     state.fdata=null;state.openPanels={};
     $("editionTag").textContent=editionLabel(state.edition);
     populateClasses();populateBackgrounds();populateRaces();

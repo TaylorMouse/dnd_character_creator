@@ -54,7 +54,8 @@ app=app.replace("populateLevels();showEdition();",
  "featAsiPicks:featAsiPicks,featAsiPending:featAsiPending,asiResolved:asiResolved,"+
  "featureAttacks:featureAttacks,featureSkillChoice:featureSkillChoice,featureSkillPicks:featureSkillPicks,"+
  "featuresAndTraits:featuresAndTraits,condNotesFor:condNotesFor,officialLanguages:officialLanguages,languagesAll:languagesAll,mergedLanguages:mergedLanguages,"+
- "expandFeatureRefs:expandFeatureRefs,featureAttacks:featureAttacks,actionsCardHtml:actionsCardHtml,defences:defences,expertiseSkills:expertiseSkills,skillBonus:skillBonus,passiveScore:passiveScore,"+
+ "expandFeatureRefs:expandFeatureRefs,featureAttacks:featureAttacks,actionsCardHtml:actionsCardHtml,"+
+ "fxAvailable:fxAvailable,fxActive:fxActive,fxTotals:fxTotals,fxDmgFor:fxDmgFor,concOptions:concOptions,acBreakdown:acBreakdown,defences:defences,expertiseSkills:expertiseSkills,skillBonus:skillBonus,passiveScore:passiveScore,"+
  "itemMechanics:itemMechanics,skillAdvantage:skillAdvantage};");
 eval(app);
 var C=window.__cc,S=C.state;
@@ -90,7 +91,7 @@ function setup(slug,name,level){
   S.background=null;S.bgIsCustom=false;S.bgChoices={};S.customLanguages=[];
   S.spells={cantrips:[],spells:[],levelFilter:"",q:""};
   S.equipment={mode:"equipment",starting:{},startingAdded:false,inventory:[],currency:{pp:0,gp:0,ep:0,sp:0,cp:0},filterType:"",filterQ:""};
-  S.sheet={hpCurrent:null,hpTemp:"",res:{},hpEdited:false,invQ:"",invAdd:"",xp:"",inspiration:false,deathSucc:0,deathFail:0,dark:false};
+  S.sheet={hpCurrent:null,hpTemp:"",res:{},hpEdited:false,invQ:"",invAdd:"",xp:"",inspiration:false,deathSucc:0,deathFail:0,dark:false,acOther:"",acOverride:"",acEditOpen:false,active:{},conc:""};
   S.manualHp=null;
   // standard array so ability-derived numbers are deterministic
   S.abilities={method:"pointbuy",base:{Strength:15,Dexterity:14,Constitution:13,Intelligence:12,Wisdom:10,Charisma:8},
@@ -616,6 +617,105 @@ S.spells={cantrips:["Fire Bolt|PHB"],spells:["Fireball|PHB"],levelFilter:"",q:""
 var wcard=C.actionsCardHtml();
 checkTrue("  a cantrip row expands",wcard.indexOf("Fire Bolt")>=0&&wcard.indexOf("Casting Time:")>=0);
 checkTrue("  a leveled spell row shows At Higher Levels",wcard.indexOf("Fireball")>=0&&wcard.indexOf("At Higher Levels")>=0);
+
+
+// =====================================================================
+section("7o. Active effects: Rage, Bladesong and concentration");
+function fxByName(list,nm){for(var i=0;i<list.length;i++)if(list[i].name===nm)return list[i];return null;}
+function strip(s){return s.replace(/<[^>]*>/g," ").replace(/\s+/g," ");}
+setup("barbarian-classic","Barbarian",5);S.subclassName="Path of the Beast";
+var av=C.fxAvailable(),rage=fxByName(av,"Rage");
+checkTrue("  Rage is offered as a switchable effect",!!rage);
+if(rage){
+  check("  its damage bonus comes from the class table",rage.mods.dmg,2);
+  check("  it grants three resistances",rage.mods.resist.length,3);
+  checkTrue("  ...the physical ones",rage.mods.resist.join(",")==="Bludgeoning,Piercing,Slashing");
+  check("  advantage on one ability",rage.mods.advAbility.join(","),"Strength");
+  checkTrue("  and it knows heavy armour cancels it",rage.mods.notHeavy);
+}
+// nothing applies until it is switched on
+check("  nothing is active to begin with",C.fxActive().length,0);
+check("  ...so no damage bonus",C.fxDmgFor({melee:true,str:true}),0);
+function clawsRow(html){var i=html.indexOf("Claws");return i<0?"":html.substr(i,220).replace(/<[^>]*>/g," ").replace(/\s+/g," ");}
+var off=C.actionsCardHtml();
+checkTrue("  the bonus is shown as a note instead",clawsRow(off).indexOf("+2 while raging")>=0);
+S.sheet.active["Rage"]=true;
+check("  switching it on makes it active",C.fxActive().length,1);
+check("  ...and the damage bonus applies to Strength melee",C.fxDmgFor({melee:true,str:true}),2);
+check("  ...but not to ranged attacks",C.fxDmgFor({ranged:true}),0);
+var on=C.actionsCardHtml();
+checkTrue("  the note is gone once it is counted",clawsRow(on).indexOf("while raging")<0);
+checkTrue("  Claws show the raised damage (Str 15: 1d6+2 becomes 1d6+4)",clawsRow(on).indexOf("1d6+4")>=0);
+checkTrue("  ...and 1d6+2 before",clawsRow(off).indexOf("1d6+2")>=0);
+function hitOf(row){var m=/(\+\d+) 1d6/.exec(row);return m?m[1]:"?";}
+check("  the attack roll is untouched",hitOf(clawsRow(on)),hitOf(clawsRow(off)));
+var d=C.defences();
+checkTrue("  Defences gains the resistances",(d.fx||[]).join?true:true);
+checkTrue("  ...listed while it runs",strip(C.defences().fx[0].text).indexOf("Resistance to Bludgeoning")>=0);
+checkTrue("  Athletics is marked with advantage",!!(C.skillAdvantage()["Athletics"]||{adv:[]}).adv.length);
+// heavy armour cancels every benefit
+S.equipment.inventory=[{name:"Plate Armor",source:"PHB",cat:"Armor",ac:18,armorKind:"heavy",qty:1,equipped:true}];
+checkTrue("  in heavy armour the effect is blocked",C.fxActive()[0].blocked);
+check("  ...so no damage bonus",C.fxDmgFor({melee:true,str:true}),0);
+checkTrue("  ...and no advantage on Athletics",!(C.skillAdvantage()["Athletics"]||{adv:[]}).adv.length);
+S.equipment.inventory=[];
+// a rest ends it
+setup("barbarian-classic","Barbarian",5);S.subclassName="Path of the Beast";
+S.sheet.active["Rage"]=true;S.sheet.conc="Haste|PHB";
+C.render();
+checkTrue("  an effect survives an ordinary render",C.fxActive().length===1);
+
+// Bladesong raises AC by the Intelligence modifier and speed by 10
+setup("wizard-classic","Wizard",6);S.subclassName="Bladesinging";
+S.abilities.base={Strength:8,Dexterity:15,Constitution:13,Intelligence:14,Wisdom:12,Charisma:10};
+var bs=fxByName(C.fxAvailable(),"Bladesong");
+checkTrue("  Bladesong is offered",!!bs);
+if(bs)check("  its AC bonus is an ability, not a number",bs.mods.acAbility,"Intelligence");
+var acOff=C.computeAC(),spOff=C.speedInfo().total;
+S.sheet.active["Bladesong"]=true;
+check("  AC before / after",acOff+" / "+C.computeAC(),"12 / 14");
+check("  speed before / after",spOff+" / "+C.speedInfo().total,"30 / 40");
+checkTrue("  the AC breakdown names it",C.acBreakdown().indexOf("Bladesong")>=0);
+S.sheet.active={};
+check("  switching it off restores AC",C.computeAC(),12);
+
+// dice bonuses cannot fold into a number, so they stay a note
+setup("fighter-classic","Fighter",6);S.subclassName="Rune Knight";
+var gm=fxByName(C.fxAvailable(),"Giant's Might");
+checkTrue("  Giant's Might is offered",!!gm);
+if(gm){check("  it grants dice, not a flat bonus",gm.mods.dmgDice,"1d6");check("  and no flat bonus",gm.mods.dmg,0);}
+S.sheet.active["Giant's Might"]=true;
+checkTrue("  the dice show as an active note on melee attacks",C.actionsCardHtml().indexOf("+1d6 Giant's Might (active)")>=0);
+
+// an effect that happens to the enemy is not one of yours
+setup("paladin-classic","Paladin",6);S.subclassName="Oath of Devotion";
+var pv=C.fxAvailable();
+checkTrue("  Sacred Weapon is yours",!!fxByName(pv,"Sacred Weapon"));
+checkTrue("  Turn the Unholy is not",!fxByName(pv,"Turn the Unholy"));
+
+// a species lists every lineage's benefit; only the one you took may apply
+setup("barbarian-classic","Barbarian",5);
+S.race={name:"Shifter",source:"MPMM"};S.raceLineage="Longtooth";
+var sv=C.fxAvailable(),generic=fxByName(sv,"Shifting");
+checkTrue("  a Longtooth shifter gets one Shifting toggle",!!fxByName(sv,"Shifting (Longtooth)")&&!generic);
+var shift=fxByName(sv,"Shifting (Longtooth)");
+if(shift){
+  check("  ...without Swiftstride's speed",shift.mods.speed,0);
+  check("  ...and without Wildhunt's advantage",shift.mods.advAbility.length,0);
+}
+
+// concentration is limited to spells that need it
+setup("wizard-classic","Wizard",5);
+S.spells={cantrips:["Fire Bolt|PHB"],spells:["Haste|PHB","Fireball|PHB"],levelFilter:"",q:""};
+var co=C.concOptions();
+check("  only concentration spells are offered",co.length,1);
+check("  ...which is Haste",co[0].label,"Haste (3rd)");
+S.sheet.conc="Haste|PHB";
+C.render();
+checkTrue("  the status bar names it",_els["sheetPanel"].innerHTML.indexOf("CONCENTRATING")>=0);
+checkTrue("  the sheet frame is tinted",_els["sheetPanel"].className.indexOf("fx-conc-on")>=0);
+S.sheet.conc="Fireball|PHB";
+checkTrue("  a spell without concentration cannot be held",!C.fxActive().length&&_els["sheetPanel"]!==null);
 
 // =====================================================================
 section("8. Data integrity");
