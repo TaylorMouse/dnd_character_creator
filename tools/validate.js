@@ -54,7 +54,7 @@ app=app.replace("populateLevels();showEdition();",
  "featAsiPicks:featAsiPicks,featAsiPending:featAsiPending,asiResolved:asiResolved,"+
  "featureAttacks:featureAttacks,featureSkillChoice:featureSkillChoice,featureSkillPicks:featureSkillPicks,"+
  "featuresAndTraits:featuresAndTraits,condNotesFor:condNotesFor,officialLanguages:officialLanguages,languagesAll:languagesAll,mergedLanguages:mergedLanguages,"+
- "defences:defences,expertiseSkills:expertiseSkills,skillBonus:skillBonus,passiveScore:passiveScore,"+
+ "expandFeatureRefs:expandFeatureRefs,featureAttacks:featureAttacks,actionsCardHtml:actionsCardHtml,defences:defences,expertiseSkills:expertiseSkills,skillBonus:skillBonus,passiveScore:passiveScore,"+
  "itemMechanics:itemMechanics,skillAdvantage:skillAdvantage};");
 eval(app);
 var C=window.__cc,S=C.state;
@@ -554,6 +554,68 @@ setup("ranger-classic","Ranger",6);
 var ad3=C.skillAdvantage();
 checkTrue("  Ranger Favored Enemy flags Survival",!!(ad3["Survival"]&&ad3["Survival"].adv.length));
 checkTrue("  ...named and marked situational",ad3["Survival"].adv.join(";").indexOf("situational")>=0);
+
+
+// =====================================================================
+section("7m. Features referenced by other features (refClassFeature / refSubclassFeature)");
+// A feature's text can be a pointer to another feature rather than the text itself.
+// Those must reach the sheet's Features & Traits, not just the wizard page.
+function nestedFor(slug,name,sub,lvl){
+  setup(slug,name,lvl);S.subclassName=sub;
+  var raw=[],fd=S.fdata;
+  (fd.classFeatures||[]).forEach(function(f){if(f.level<=lvl)raw.push({entries:f.entries,_origin:"class feature"});});
+  var ch=(fd.subclasses||[]).filter(function(s){return s.name===sub;})[0];
+  if(ch)(ch.features||[]).forEach(function(f){if(f.level<=lvl)raw.push({entries:f.entries,_origin:"subclass feature"});});
+  return C.expandFeatureRefs(raw);
+}
+function hasNested(list,nm){for(var i=0;i<list.length;i++)if(list[i].name===nm)return list[i];return null;}
+var beast=nestedFor("barbarian-classic","Barbarian","Path of the Beast",5);
+var fotb=hasNested(beast,"Form of the Beast");
+checkTrue("  Path of the Beast surfaces Form of the Beast",!!fotb);
+if(fotb){
+  checkTrue("  ...with its full text",fotb.entries.length>3);
+  checkTrue("  ...and the origin of the feature that referenced it",fotb._origin.indexOf("subclass")>=0);
+}
+// the same mechanism carries features several other classes depend on
+var cases=[["monk-classic","Monk","Way of the Open Hand",5,"Flurry of Blows"],
+           ["monk-classic","Monk","Way of the Open Hand",5,"Patient Defense"],
+           ["monk-classic","Monk","Way of the Open Hand",5,"Step of the Wind"],
+           ["sorcerer-classic","Sorcerer","Draconic Bloodline",5,"Draconic Resilience"],
+           ["sorcerer-classic","Sorcerer","Draconic Bloodline",5,"Flexible Casting"],
+           ["paladin-classic","Paladin","Oath of Devotion",5,"Sacred Weapon"],
+           ["rogue-classic","Rogue","Assassin",5,"Assassinate"],
+           ["warlock-classic","Warlock","The Fiend",5,"Dark One's Blessing"],
+           ["barbarian-classic","Barbarian","Path of the Totem Warrior",5,"Bear"]];
+for(var ni=0;ni<cases.length;ni++){
+  var cs=cases[ni],lst=nestedFor(cs[0],cs[1],cs[2],cs[3]);
+  checkTrue("  "+cs[1]+" / "+cs[2]+" surfaces "+cs[4],!!hasNested(lst,cs[4]));
+}
+// nothing from a level you have not reached
+checkTrue("  a level-1 Paladin has no Sacred Weapon yet",!hasNested(nestedFor("paladin-classic","Paladin","Oath of Devotion",1),"Sacred Weapon"));
+
+// =====================================================================
+section("7n. Attack rows carry their rules text and expand");
+setup("barbarian-classic","Barbarian","Path of the Beast",5);
+S.subclassName="Path of the Beast";
+var atks=C.featureAttacks(),names=atks.map(function(a){return a.name;}).join(",");
+check("  Form of the Beast grants three attacks",atks.length,3);
+checkTrue("  Bite, Claws and Tail",names.indexOf("Bite")>=0&&names.indexOf("Claws")>=0&&names.indexOf("Tail")>=0);
+for(var ai=0;ai<atks.length;ai++){
+  checkTrue("  "+atks[ai].name+" carries its own text",atks[ai].entries.length>0);
+  checkTrue("  "+atks[ai].name+" names its parent feature",atks[ai].parent==="Form of the Beast");
+}
+var card=C.actionsCardHtml();
+function count(re){return (card.match(re)||[]).length;}
+check("  every attack row is expandable",count(/class="atk-row has-desc/g),count(/class="atk-row/g));
+check("  ...and each has a description block",count(/atk-desc-in/g),count(/class="atk-row/g));
+checkTrue("  the Tail's reaction text is in the card",card.indexOf("swipe your tail")>=0);
+checkTrue("  the Unarmed Strike is described too",card.indexOf("never less than 1")>=0);
+// a caster's spell rows expand to the full spell entry
+setup("wizard-classic","Wizard",5);
+S.spells={cantrips:["Fire Bolt|PHB"],spells:["Fireball|PHB"],levelFilter:"",q:""};
+var wcard=C.actionsCardHtml();
+checkTrue("  a cantrip row expands",wcard.indexOf("Fire Bolt")>=0&&wcard.indexOf("Casting Time:")>=0);
+checkTrue("  a leveled spell row shows At Higher Levels",wcard.indexOf("Fireball")>=0&&wcard.indexOf("At Higher Levels")>=0);
 
 // =====================================================================
 section("8. Data integrity");

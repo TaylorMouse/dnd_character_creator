@@ -1925,19 +1925,27 @@
         list.push(tag(f,withSrc(chosen.name,chosen.source)+" — subclass feature, level "+f.level));
       });
     }
-    var lookup=(fd&&fd.refLookup)||{},expanded=[],seen={};
-    function collectRefs(e,origin){
+    return list.concat(expandFeatureRefs(list));
+  }
+  /* A feature's entries can point at another feature instead of holding its text
+     ({"type":"refSubclassFeature"}), which is how Path of the Beast carries Form of
+     the Beast. Resolve those into real features so they are listed and searched like
+     any other, inheriting the origin of the feature that referenced them. */
+  function expandFeatureRefs(list){
+    var lookup=(state.fdata&&state.fdata.refLookup)||{},out=[],seen={};
+    function tag(f,origin){var o={},k;for(k in f)o[k]=f[k];o._origin=origin;return o;}
+    function walk(e,origin){
       if(!e)return;
-      if(e instanceof Array){for(var i=0;i<e.length;i++)collectRefs(e[i],origin);return;}
+      if(e instanceof Array){for(var i=0;i<e.length;i++)walk(e[i],origin);return;}
       if(typeof e!=="object")return;
       var key=e.classFeature||e.subclassFeature;
       if((e.type==="refClassFeature"||e.type==="refSubclassFeature")&&key&&lookup[key]&&!seen[key]){
-        seen[key]=1;expanded.push(tag(lookup[key],origin));collectRefs(lookup[key].entries,origin);return;
+        seen[key]=1;out.push(tag(lookup[key],origin));walk(lookup[key].entries,origin);return;
       }
-      for(var k in e){if(k!=="type"&&k!=="name")collectRefs(e[k],origin);}
+      for(var k in e){if(k!=="type"&&k!=="name")walk(e[k],origin);}
     }
-    list.forEach(function(x){collectRefs(x.entries,x._origin);});
-    return list.concat(expanded);
+    (list||[]).forEach(function(x){walk(x.entries,x._origin||"");});
+    return out;
   }
   // classify features/traits (+ racial bonus-action spells) by action economy; keep entries for descriptions
   function actionEconomy(){
@@ -1991,7 +1999,8 @@
           var key=f.name+":"+it.name;
           if(seen[key])return;seen[key]=1;
           out.push({name:it.name,parent:f.name,origin:f._origin||"",dmg:m[1],dmgType:m[2].toLowerCase(),
-                    reach:/reach/i.test(txt),finesse:/finesse/i.test(txt)});
+                    reach:/reach/i.test(txt),finesse:/finesse/i.test(txt),
+                    entries:(it.entries&&it.entries.length)?it.entries:(it.entry?[it.entry]:[])});
         });
       });
     });
@@ -2002,10 +2011,23 @@
   function actionsCardHtml(){
     var prof=profBonus(),strM=abMod(totalScore("Strength")),dexM=abMod(totalScore("Dexterity"));
     var info=spellInfo(),castMod=info?abMod(totalScore(info.ability)):0,spAtk=info?prof+castMod:null,spDC=info?8+prof+castMod:null;
-    function row(name,sub,range,hit,dmg,notes,why){
-      return '<tr'+(why?' class="has-origin" title="'+esc(why)+'"':"")+'><td><div class="atk-name">'+esc(name)+"</div>"+
+    // A row may carry its full rules text; when it does it gets a chevron and expands
+    // in place, like the Bonus Actions list. The origin stays as the hover tooltip.
+    function row(name,sub,range,hit,dmg,notes,why,desc){
+      var has=desc&&desc.length;
+      var h='<tr class="atk-row'+(has?" has-desc":"")+(why?" has-origin":"")+'"'+(why?' title="'+esc(why)+'"':"")+'><td><div class="atk-name">'+esc(name)+
+        (has?' <span class="atk-chev">&#9662;</span>':"")+"</div>"+
         (sub?'<div class="atk-sub">'+esc(sub)+"</div>":"")+"</td><td>"+esc(range||"—")+
         '</td><td class="atk-hit">'+hit+"</td><td>"+esc(dmg)+'</td><td class="atk-notes">'+esc(notes||"")+"</td></tr>";
+      if(has)h+='<tr class="atk-desc"><td colspan="5"><div class="atk-desc-in">'+desc.map(renderEntry).join("")+"</div></td></tr>";
+      return h;
+    }
+    function spellDesc(s){
+      var hdr=["{@b Casting Time:} "+(s.time||"—")+"  ·  {@b Range:} "+(s.range||"—"),
+               "{@b Components:} "+(s.compFull||"—")+"  ·  {@b Duration:} "+(s.duration||"—")];
+      var body=hdr.concat(s.entries||[]);
+      if(s.higher&&s.higher.length)body=body.concat([{type:"entries",name:"At Higher Levels",entries:s.higher}]);
+      return body;
     }
     var rows="";
     state.equipment.inventory.forEach(function(it){
@@ -2026,17 +2048,21 @@
       notes=withCond(notes,{melee:melee,ranged:!melee,str:usesStr,finesse:finesse,monkWeapon:monkW});
       if(w.att==="optional"&&!it.attuned)notes=(notes?notes+" · ":"")+"not attuned — no magic bonus";
       rows+=row(w.name,w.wtype==="R"?"Ranged Weapon":"Melee Weapon",range,modStr(mod+prof),dstr,notes,
-                "Equipped item"+(it.source?" — "+sourceName(it.source):""));
+                "Equipped item"+(it.source?" — "+sourceName(it.source):""),itemEntriesFull(it));
     });
     rows+=row("Unarmed Strike","Melee","5 ft.",modStr(strM+prof),Math.max(1,1+strM)+" bludgeoning",
               withCond("",{melee:true,str:true,unarmed:true}),
-              "Available to every character");   // unarmed damage is always at least 1
+              "Available to every character",    // unarmed damage is always at least 1
+              ["A punch, kick, head-butt or similar blow, made in place of a weapon attack. "+
+               "Every character is proficient with it, and it deals bludgeoning damage equal to "+
+               "1 + your Strength modifier — never less than 1."]);
     featureAttacks().forEach(function(a){                 // e.g. Bite / Claws / Tail from Form of the Beast
       var mod=a.finesse?Math.max(strM,dexM):strM;
       rows+=row(a.name,a.parent,a.reach?"10 ft. (reach)":"5 ft.",modStr(mod+prof),
                 a.dmg+(mod>0?"+"+mod:(mod<0?""+mod:""))+" "+a.dmgType,
                 withCond(a.reach?"Reach":"",{melee:true,str:!a.finesse||strM>=dexM,finesse:a.finesse,unarmed:true}),
-                a.origin?(a.parent+" — "+a.origin):a.parent);
+                a.origin?(a.parent+" — "+a.origin):a.parent,
+                a.entries.length?["{@i From "+a.parent+".}"].concat(a.entries):[]);
     });
     if(info){
       state.spells.cantrips.forEach(function(k){
@@ -2044,13 +2070,13 @@
         var die=scaledDie(s.scaling,state.level);
         var hit=s.atk?modStr(spAtk):(s.save?"DC "+spDC:"—");
         rows+=row(s.name,"Cantrip",s.range||"—",hit,die+" "+(s.dmgType||""),(s.save?"Save: "+capital(s.save):"")+(s.conc?" · Conc.":""),
-                  state.className+" cantrip — "+sourceName(s.source));
+                  state.className+" cantrip — "+sourceName(s.source),spellDesc(s));
       });
       state.spells.spells.forEach(function(k){  // leveled damage/attack spells
         var s=spellByKey(k);if(!s||!s.dmg||(!s.atk&&!s.save))return;
         var hit=s.atk?modStr(spAtk):"DC "+spDC;
         rows+=row(s.name,ordinal(s.level)+"-level spell",s.range||"—",hit,s.dmg+" "+(s.dmgType||""),(s.save?"Save: "+capital(s.save):"")+(s.conc?" · Conc.":""),
-                  state.className+" spell — "+sourceName(s.source));
+                  state.className+" spell — "+sourceName(s.source),spellDesc(s));
       });
     }
     // attacks per action (Extra Attack)
@@ -2235,18 +2261,30 @@
     invBody+='<div class="lang-add" style="margin:8px 0"><input type="text" id="invCustom" placeholder="Add a custom item…"><button class="btn" id="addCustomItem">Add</button></div>';
     var cInv=shCard("Inventory",invBody);
     // features & traits (expandable, with descriptions + the player's choices)
-    var featItems=[],seenCh={};
+    var featItems=[],seenCh={},refSrc=[];
     (fd.classFeatures||[]).forEach(function(f){
-      if(f.level>state.level)return;
+      if(f.level>state.level||!optEnabled(f))return;    // optional features can be switched off
       var isGroup=fd.optionLists&&fd.optionLists[f.name]&&f.name!=="Ability Score Improvement";
       if(isGroup){if(seenCh[f.name])return;seenCh[f.name]=1;}  // show a repeating choice feature (e.g. Metamagic) once
       var nm=f.name+(f.optional?" (optional)":"")+(f.name==="Ability Score Improvement"?" ("+ordinal(f.level)+" level)":"");
-      featItems.push({name:nm,entries:featEntriesWithChoice(f)});
+      var og=state.className+" — class feature, level "+f.level+(f.optional?" (optional, "+sourceName(f.source)+")":"");
+      featItems.push({name:nm,entries:featEntriesWithChoice(f),origin:og});
+      refSrc.push({entries:f.entries,_origin:og});
     });
     var chosen=state.subclassName?(fd.subclasses||[]).filter(function(s){return s.name===state.subclassName;})[0]:null;
-    if(chosen)(chosen.features||[]).forEach(function(f){if(f.level<=state.level)featItems.push({name:f.name+" ["+state.subclassName+"]",entries:featEntriesWithChoice(f)});});
-    if(race)(race.traits||[]).forEach(function(t){featItems.push({name:t.name,entries:t.entries});});
-    if(lin)(lin.traits||[]).forEach(function(t){featItems.push({name:t.name,entries:t.entries});});
+    if(chosen)(chosen.features||[]).forEach(function(f){
+      if(f.level>state.level)return;
+      var og=state.subclassName+" — subclass feature, level "+f.level+" ("+sourceName(chosen.source)+")";
+      featItems.push({name:f.name+" ["+state.subclassName+"]",entries:featEntriesWithChoice(f),origin:og});
+      refSrc.push({entries:f.entries,_origin:og});
+    });
+    // features a listed feature only points at, e.g. Form of the Beast inside Path of the Beast
+    expandFeatureRefs(refSrc).forEach(function(f){
+      featItems.push({name:f.name+(state.subclassName&&f._origin.indexOf("subclass")>=0?" ["+state.subclassName+"]":""),
+                      entries:f.entries,origin:f._origin});
+    });
+    if(race)(race.traits||[]).forEach(function(t){featItems.push({name:t.name,entries:t.entries,origin:race.name+" ("+sourceName(race.source)+") — species trait"});});
+    if(lin)(lin.traits||[]).forEach(function(t){featItems.push({name:t.name,entries:t.entries,origin:lin.name+" — lineage trait"});});
     var cFeat=shCard("Features & Traits",sheetCollapse(featItems,"f"));
     // background
     var bg=currentBg(),det=state.details,bgBody="";
@@ -2301,6 +2339,7 @@
     });});
     Array.prototype.forEach.call(host.querySelectorAll(".pip"),function(p){p.addEventListener("click",function(){var k=p.getAttribute("data-k");state.sheet.res[k]=!state.sheet.res[k];p.classList.toggle("used");});});
     Array.prototype.forEach.call(host.querySelectorAll(".sc-h"),function(h){h.addEventListener("click",function(){h.parentNode.classList.toggle("open");});});
+    Array.prototype.forEach.call(host.querySelectorAll(".atk-row.has-desc"),function(r){r.addEventListener("click",function(){r.classList.toggle("open");});});
     // custom languages
     var lp=host.querySelector("#langPick");
     if(lp)lp.addEventListener("change",function(){

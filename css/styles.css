@@ -289,6 +289,8 @@ body.dark .atk-table th{color:#9a9a9a}
 body.dark .atk-table td,body.dark .sc-item,body.dark .inv-res-row{border-color:#3a3a3a}
 body.dark .sc-h{color:#e8e8e8}
 body.dark .sc-h:hover{color:var(--softblue)}
+body.dark .atk-desc-in{color:#d2d2d2;border-left-color:#3a3a3a}
+body.dark .atk-desc>td{border-color:#3a3a3a}
 body.dark .sc-d,body.dark .inv-desc,body.dark .bg-desc,body.dark .combat-actions,body.dark .ae-sec{color:#d2d2d2}
 body.dark .choice-desc{background:#2b2b2b;border-color:#4a4a4a;color:#d2d2d2}
 body.dark .pip{background:#333;border-color:#5b6f8c}
@@ -439,6 +441,17 @@ tr.has-origin{cursor:help}
 .atk-sub{font-size:11px;color:var(--muted)}
 .atk-hit{font-weight:800;color:var(--roll)}
 .atk-notes{font-size:11px;color:var(--muted)}
+/* rows that carry their rules text expand in place, like the collapsible feature lists */
+.atk-row.has-desc{cursor:pointer;user-select:none}
+.atk-row.has-desc .atk-chev{display:inline-block;color:var(--muted);font-size:10px;transition:transform .15s}
+.atk-row.has-desc.open .atk-chev{transform:rotate(180deg)}
+.atk-row.has-desc:hover .atk-name{color:var(--accent)}
+.atk-desc{display:none}
+.atk-row.open+.atk-desc{display:table-row}
+.atk-desc>td{padding:0 8px 10px !important;border-bottom:1px solid var(--line)}
+.atk-desc-in{font-size:12px;color:#333;border-left:2px solid var(--line);padding:2px 0 2px 9px}
+.atk-desc-in p{margin:0 0 7px}
+.atk-desc-in p:last-child{margin-bottom:0}
 .ae-sec{margin-top:12px;font-size:13px;color:#333}
 .ae-h{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--accent);margin-bottom:4px}
 .combat-actions{margin-top:12px;font-size:13px;color:#333;border-top:1px solid var(--line);padding-top:10px}
