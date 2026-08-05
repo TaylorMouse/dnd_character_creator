@@ -2526,7 +2526,11 @@
     if(info&&info.sc.slots&&info.sc.slots.type==="pact")srNames.push("Pact Magic slots");
     var restNote='<div class="res-sub" style="margin-top:8px"><b>Short rest:</b> '+(srNames.length?esc(srNames.join(", ")):"nothing to regain (spend hit dice below)")+
       '<br><b>Long rest:</b> full HP, all slots &amp; resources, half your hit dice</div>';
-    var cRest=shCard("Rest & Hit Dice",'<div class="rest-btns"><button class="btn ghost" id="shortRest">Short Rest</button><button class="btn" id="longRest">Long Rest</button></div><div class="slot-line"><span class="slot-lvl">Hit Dice '+state.level+"d"+state.hdFaces+'</span><div class="pips">'+hdpips+"</div></div>"+restNote);
+    // each die spent on a short rest restores its roll plus your Constitution modifier
+    var hdCon=abMod(totalScore("Constitution")),hdSign=(hdCon<0?" - "+Math.abs(hdCon):" + "+hdCon);
+    var hdLabel="Hit Dice "+state.level+"d"+state.hdFaces+hdSign;
+    var hdWhy="Each die you spend on a short rest restores 1d"+state.hdFaces+hdSign+" hit points — your Constitution modifier applies to every die.";
+    var cRest=shCard("Rest & Hit Dice",'<div class="rest-btns"><button class="btn ghost" id="shortRest">Short Rest</button><button class="btn" id="longRest">Long Rest</button></div><div class="slot-line"><span class="slot-lvl has-origin" title="'+esc(hdWhy)+'">'+esc(hdLabel)+'</span><div class="pips">'+hdpips+"</div></div>"+restNote);
 
     var fxOn=fxActive(),frameCls="sheet-frame";
     if(fxOn.length)frameCls+=" fx-active";
