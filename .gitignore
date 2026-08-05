@@ -14,5 +14,6 @@ __pycache__/
 # homebrew books live outside the repo; ignore any dropped in by mistake
 homebrew/
 
-# packaged builds of the app; the repo is the source of truth
+# zipped copies of the app, kept here on purpose to hand to other players.
+# They are a package, not source, so they stay out of the repo.
 *.zip
