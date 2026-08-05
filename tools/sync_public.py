@@ -14,7 +14,12 @@ DEST = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(SRC), 
 FILES = ["index.html", "README.md", "LICENSE", ".gitignore",
          # our own PDF field mapping is fine to publish; the PDF itself and the
          # generated 5etools data are not.
-         os.path.join("resources", "pdf-fields.js")]
+         os.path.join("resources", "pdf-fields.js"),
+         # the logo and the icons derived from it are our own artwork
+         os.path.join("resources", "logo.png"),
+         os.path.join("resources", "favicon.ico"),
+         os.path.join("resources", "favicon-32.png"),
+         os.path.join("resources", "apple-touch-icon.png")]
 DIRS  = ["css", "js", "tools"]
 
 def copy_file(rel):
