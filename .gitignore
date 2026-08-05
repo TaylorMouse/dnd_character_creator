@@ -17,3 +17,6 @@ homebrew/
 # zipped copies of the app, kept here on purpose to hand to other players.
 # They are a package, not source, so they stay out of the repo.
 *.zip
+
+# working copies of saved characters and their portraits, gathered here for convenience
+Characters/
