@@ -1995,6 +1995,7 @@
     if(typeof e==="object"){
       var t=e.type;
       if(t==="list"||t==="item"||t==="options")return "";
+      if(t==="refClassFeature"||t==="refSubclassFeature")return "";   // pointer, resolved separately
       var s="",k;for(k in e){if(k==="type"||k==="name"||k==="source")continue;s+=actionText(e[k]);}
       return s;
     }
@@ -2045,21 +2046,36 @@
     (list||[]).forEach(function(x){walk(x.entries,x._origin||"");});
     return out;
   }
+  // features that trigger when you hit with an attack — riders like Hand of Harm, Divine
+  // Smite or Stunning Strike, which carry no action/bonus/reaction wording of their own
+  var ATTACK_HIT=/when you hit (?:a creature|a target|it|them|the target|another creature)?\s*with (?:an?|your|a)?\s*(?:unarmed strike|weapon|melee|ranged|attack)/i;
   // classify features/traits (+ racial bonus-action spells) by action economy; keep entries for descriptions
   function actionEconomy(){
-    var out={action:[],bonus:[],reaction:[]},seen={};
+    var out={action:[],bonus:[],reaction:[],attack:[]},seen={},inBucket={};
     function push(list,key,it){if(seen[key])return;seen[key]=1;list.push({name:it.name,entries:it.entries||[],origin:it._origin||""});}
     // a feature can belong to several buckets (e.g. Storm Guide: an action AND a bonus action)
     function classify(t){
       var txt=actionText(t.entries||"").toLowerCase();
-      if(/\b(?:an|your) action\b/.test(txt))push(out.action,"a"+t.name,t);
-      if(txt.indexOf("bonus action")>=0)push(out.bonus,"b"+t.name,t);
-      if(txt.indexOf("as a reaction")>=0||txt.indexOf("your reaction")>=0)push(out.reaction,"r"+t.name,t);
+      if(/\b(?:an|your) action\b/.test(txt)){push(out.action,"a"+t.name,t);inBucket[t.name]=1;}
+      if(txt.indexOf("bonus action")>=0){push(out.bonus,"b"+t.name,t);inBucket[t.name]=1;}
+      if(txt.indexOf("as a reaction")>=0||txt.indexOf("your reaction")>=0){push(out.reaction,"r"+t.name,t);inBucket[t.name]=1;}
     }
-    featuresAndTraits().forEach(classify);
+    var feats=featuresAndTraits();
+    feats.forEach(classify);
     var race=currentRace(),lin=race?currentLineage(race):null;
     var rsp=[];if(race)rsp=rsp.concat(race.spells||[]);if(lin)rsp=rsp.concat(lin.spells||[]);
     rsp.forEach(function(sp){var s=spellByName(sp.name);if(s&&s.time&&s.time.indexOf("bonus")>=0){var c={};for(var kk in s)c[kk]=s[kk];c._origin=(race?race.name:"species")+" — innate spell";push(out.bonus,"b"+s.name,c);}});
+    // attack options: the on-hit riders themselves, then any feature that augments one by
+    // name (Physician's Touch improves Hand of Harm), skipping anything already shown above
+    var riderNames={};
+    feats.forEach(function(t){
+      if(ATTACK_HIT.test(plainTags(actionText(t.entries||"")))){riderNames[t.name]=1;if(!inBucket[t.name])push(out.attack,"x"+t.name,t);}
+    });
+    feats.forEach(function(t){
+      if(riderNames[t.name]||inBucket[t.name])return;
+      var txt=plainTags(actionText(t.entries||""));
+      for(var nm in riderNames){if(nm.length>4&&txt.indexOf(nm)>=0){push(out.attack,"x"+t.name,t);break;}}
+    });
     return out;
   }
   /* ---------- active effects ----------
@@ -2368,6 +2384,7 @@
     var html='<div class="apa">Attacks per Action: <b>'+apa+"</b></div>";
     html+='<table class="atk-table"><thead><tr><th>Attack</th><th>Range</th><th>Hit / DC</th><th>Damage</th><th>Notes</th></tr></thead><tbody>'+rows+"</tbody></table>";
     var ae=actionEconomy();
+    if(ae.attack.length)html+='<div class="ae-sec"><div class="ae-h">Attack Options (on a hit)</div>'+sheetCollapse(ae.attack,"ao")+"</div>";
     if(ae.action.length)html+='<div class="ae-sec"><div class="ae-h">Other Actions</div>'+sheetCollapse(ae.action,"oa")+"</div>";
     if(ae.bonus.length)html+='<div class="ae-sec"><div class="ae-h">Bonus Actions</div>'+sheetCollapse(ae.bonus,"ba")+"</div>";
     if(ae.reaction.length)html+='<div class="ae-sec"><div class="ae-h">Reactions</div>'+sheetCollapse(ae.reaction,"ra")+"</div>";

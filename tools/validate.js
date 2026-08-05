@@ -980,6 +980,38 @@ checkTrue("  ...and older saves are migrated on load",app.indexOf('if(!state.cus
 checkTrue("  the PDF export folds them in after the granted ones",app.indexOf('function profLine(txt,key)')>=0);
 
 // =====================================================================
+section("7v. Attack Options (on-hit riders) surface in the action economy");
+function aoNames(slug,name,lv,sub){setup(slug,name,lv);S.subclassName=sub;return C.actionEconomy().attack.map(function(x){return x.name;});}
+function has(list,nm){return list.indexOf(nm)>=0;}
+// the level-6 Way of Mercy monk this was reported for
+var m6=aoNames("monk-classic","Monk",6,"Way of Mercy");
+checkTrue("  Hand of Harm surfaces (an on-hit rider, no action wording of its own)",has(m6,"Hand of Harm"));
+checkTrue("  Physician's Touch surfaces (it augments Hand of Harm)",has(m6,"Physician's Touch"));
+checkTrue("  Stunning Strike surfaces too",has(m6,"Stunning Strike"));
+checkTrue("  the parent 'Way of Mercy' is not mistaken for a rider",!has(m6,"Way of Mercy"));
+// they appear only once the character has them
+checkTrue("  no Physician's Touch before level 6",!has(aoNames("monk-classic","Monk",5,"Way of Mercy"),"Physician's Touch"));
+checkTrue("  no Stunning Strike before level 5",!has(aoNames("monk-classic","Monk",3,"Way of Mercy"),"Stunning Strike"));
+checkTrue("  Hand of Harm is there from level 3",has(aoNames("monk-classic","Monk",3,"Way of Mercy"),"Hand of Harm"));
+// the pattern is general, not a Monk special case
+checkTrue("  Paladin's Divine Smite surfaces",has(aoNames("paladin-classic","Paladin",5,"Oath of Devotion"),"Divine Smite"));
+checkTrue("  Cleric's Divine Strike surfaces",has(aoNames("cleric-classic","Cleric",8,"Life Domain"),"Divine Strike"));
+checkTrue("  Ranger's Colossus Slayer surfaces",has(aoNames("ranger-classic","Ranger",11,"Hunter"),"Colossus Slayer"));
+// riders already shown as an action are not duplicated here
+var mQuiver=aoNames("monk-classic","Monk",17,"Way of Mercy");
+var ae17=C.actionEconomy();
+checkTrue("  a rider that is also an action stays out of Attack Options",
+  !(has(ae17.attack.map(function(x){return x.name;}),"Quivering Palm")&&has(ae17.action.map(function(x){return x.name;}),"Quivering Palm")));
+// the card renders the section with expandable text
+setup("monk-classic","Monk",6);S.subclassName="Way of Mercy";
+var card=C.actionsCardHtml();
+checkTrue("  the actions card shows an Attack Options section",card.indexOf("Attack Options")>=0);
+checkTrue("  ...with the rider's full text to expand",card.indexOf("extra necrotic damage")>=0);
+// a class with no such riders shows no section
+setup("wizard-classic","Wizard",5);
+check("  a Wizard has no attack-option riders",C.actionEconomy().attack.length,0);
+
+// =====================================================================
 section("8. Data integrity");
 check("  core class/edition combos",classes.length,26);
 check("  feature files loaded",Object.keys(window.CC_FEATURE_DATA).length,30);
