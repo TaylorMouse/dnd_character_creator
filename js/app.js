@@ -2546,13 +2546,15 @@
     var hdCon=abMod(totalScore("Constitution")),hdSign=(hdCon<0?" - "+Math.abs(hdCon):" + "+hdCon);
     var hdLabel="Hit Dice "+state.level+"d"+state.hdFaces+hdSign;
     var hdWhy="Each die you spend on a short rest restores 1d"+state.hdFaces+hdSign+" hit points — your Constitution modifier applies to every die.";
-    var cRest=shCard("Rest & Hit Dice",'<div class="rest-btns"><button class="btn ghost" id="shortRest">Short Rest</button><button class="btn" id="longRest">Long Rest</button></div><div class="slot-line"><span class="slot-lvl has-origin" title="'+esc(hdWhy)+'">'+esc(hdLabel)+'</span><div class="pips">'+hdpips+"</div></div>"+restNote);
+    var cRest=shCard("Rest & Hit Dice",'<div class="rest-btns"><button class="btn ghost sm" id="shortRest">Short Rest</button><button class="btn sm" id="longRest">Long Rest</button></div><div class="hd-lbl has-origin" title="'+esc(hdWhy)+'">'+esc(hdLabel)+'</div><div class="pips">'+hdpips+"</div>"+restNote);
 
     var fxOn=fxActive(),frameCls="sheet-frame";
     if(fxOn.length)frameCls+=" fx-active";
     if(concSpell())frameCls+=" fx-conc-on";
     host.className=frameCls;
-    host.innerHTML=html+'<div class="sheet-grid"><div>'+left+"</div><div>"+mid+"</div><div>"+cRes+cSlots+cSpells+"</div><div>"+cAtk+cCur+cInv+"</div><div>"+cRest+cDeath+cFeat+cBg+"</div></div>";
+    // fifth column: Rest and Death Saves share a row, Features & Traits and Background
+    // then run the full width beneath them
+    host.innerHTML=html+'<div class="sheet-grid"><div>'+left+"</div><div>"+mid+"</div><div>"+cRes+cSlots+cSpells+"</div><div>"+cAtk+cCur+cInv+'</div><div class="col5"><div class="col5-pair">'+cRest+cDeath+"</div>"+cFeat+cBg+"</div></div>";
     var spx=host.querySelector("#sheetPortrait");if(spx)spx.addEventListener("click",function(){$("portraitFile").click();});
     var hc=host.querySelector("#hpCur");if(hc)hc.addEventListener("input",function(){state.sheet.hpEdited=true;state.sheet.hpCurrent=parseInt(hc.value,10)||0;});
     var ht=host.querySelector("#hpTemp");if(ht)ht.addEventListener("input",function(){state.sheet.hpTemp=ht.value;});

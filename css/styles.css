@@ -374,6 +374,15 @@ body.dark .ac-edit{background:#262626;border-color:#4a4a4a}
 @media(max-width:620px){.sheet-grid{grid-template-columns:1fr}}
 .rest-btns{display:flex;gap:8px;margin-bottom:10px}
 .rest-btns .btn{flex:1}
+/* compact rest buttons, since the card now shares its row with Death Saves */
+.btn.sm{padding:6px 8px;font-size:12px}
+/* the hit-dice total sits on its own line so "6d6 + 2" never wraps */
+.hd-lbl{font-size:12px;font-weight:700;white-space:nowrap;margin:2px 0 4px}
+/* Rest & Hit Dice beside Death Saves; the cards below them span both.
+   Collapses when the main grid reflows off its full five-column layout. */
+.col5-pair{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+@media(max-width:1500px){.col5-pair{grid-template-columns:1fr 1fr}}
+@media(max-width:1000px){.col5-pair{grid-template-columns:1fr}}
 .insp-box{cursor:pointer;user-select:none}
 .insp-box .tv{display:flex;justify-content:center}
 .insp-box .ico{width:22px;height:22px}
