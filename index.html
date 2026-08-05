@@ -62,7 +62,10 @@
     <div class="topbar">
       <button class="hamburger" id="menuBtn">&#9776;</button>
       <span class="edition-tag" id="editionTag">2014 Core Rules</span>
-      <button class="dark-toggle hidden" id="darkToggle" title="Toggle dark mode">&#127769;</button>
+      <span class="top-actions">
+        <button class="dark-toggle hidden" id="saveBtn" title="Save character">&#128190;</button>
+        <button class="dark-toggle hidden" id="darkToggle" title="Toggle dark mode">&#127769;</button>
+      </span>
     </div>
     <div class="steps" id="stepsMenu">
       <button class="step" data-step="class"><span class="step-n">1</span> Class &amp; Features</button>
@@ -73,8 +76,6 @@
       <button class="step" data-step="spells"><span class="step-n">6</span> Spells</button>
       <button class="step" data-step="sheet"><span class="step-n">7</span> Sheet</button>
       <div class="menu-sep"></div>
-      <button class="menu-action" id="btnSave">&#128190; Save character</button>
-      <button class="menu-action" id="btnSaveAs">&#128190; Save as&hellip;</button>
       <button class="menu-action" id="btnLoad">&#128193; Load character</button>
       <input type="file" id="fileLoad" accept="application/json,.json" style="display:none">
       <button class="menu-action" id="btnPdf">&#128196; Export to PDF</button>

@@ -201,6 +201,7 @@
     var mb=$("menuBtn");if(mb)mb.innerHTML="☰";
     var sm=$("stepsMenu");if(sm)sm.classList.remove("open");
     var dk=$("darkToggle");if(dk){dk.classList.toggle("hidden",step!=="sheet");dk.innerHTML=state.sheet.dark?"☀":"🌙";}
+    var sb=$("saveBtn");if(sb)sb.classList.toggle("hidden",!state.className);
     document.body.classList.toggle("dark",step==="sheet"&&!!state.sheet.dark);
     var wrap=document.querySelector(".wrap");if(wrap)wrap.classList.toggle("wide",step==="sheet");
     render();               // always refresh the page we're navigating to with the latest state
@@ -2813,33 +2814,59 @@
       return w.write(text).then(function(){return w.close();});
     });
   }
-  function pickAndSave(json){
-    return window.showSaveFilePicker({suggestedName:charFileName(),
-      types:[{description:"Character file",accept:{"application/json":[".json"]}}]})
-      .then(function(h){charFileHandle=h;return writeHandle(h,json).then(function(){toast("Saved to "+h.name);rcRemember(h);});})
-      ["catch"](function(e){
-        if(e&&e.name==="AbortError")return;
-        downloadBlob(json,charFileName(),"application/json");toast("Saved to your downloads");
-      });
+  /* Both pickers open where characters already live: the folder holding this character's
+     own file, or failing that the most recently used one. startIn takes a file handle and
+     means "that file's folder", so once a character has been saved into Characters the
+     dialog lands there every time, with no extra folder permission to grant. The shared
+     id gives the browser its own memory of the last folder used for characters, which
+     covers the very first save. */
+  var PICKER_ID="cc-characters";
+  var CHAR_TYPES=[{description:"Character file",accept:{"application/json":[".json"]}}];
+  var NL=String.fromCharCode(10);
+  function saveDirHint(){
+    if(charFileHandle)return Promise.resolve(charFileHandle);
+    if(!window.indexedDB)return Promise.resolve(null);
+    return rcAll().then(function(list){
+      list.sort(function(a,b){return b.when-a.when;});
+      return (list[0]&&list[0].handle)||null;
+    })["catch"](function(){return null;});
   }
-  function saveChar(saveAs){
+  function pickAndSave(json){
+    return saveDirHint().then(function(hint){
+      var opts={suggestedName:charFileName(),id:PICKER_ID,types:CHAR_TYPES};
+      if(hint)opts.startIn=hint;
+      return window.showSaveFilePicker(opts);
+    }).then(function(h){
+      charFileHandle=h;
+      return writeHandle(h,json).then(function(){toast("Saved to "+h.name);rcRemember(h);});
+    })["catch"](function(e){
+      if(e&&e.name==="AbortError")return;
+      downloadBlob(json,charFileName(),"application/json");toast("Saved to your downloads");
+    });
+  }
+  /* Saving never overwrites silently. A character with no file yet goes straight to the
+     picker; one that has a file is asked about it, and declining leads to the picker so
+     it can be saved somewhere else. */
+  function saveChar(){
     if(!state.className){alert("Build a character first (pick a class).");return;}
     var json=JSON.stringify(serializeChar(),null,2);
     if(!canFilePicker()){downloadBlob(json,charFileName(),"application/json");toast("Saved to your downloads");return;}
-    if(charFileHandle&&!saveAs){
-      grantWrite(charFileHandle).then(function(ok){
-        if(!ok)return pickAndSave(json);
-        return writeHandle(charFileHandle,json).then(function(){toast("Saved to "+charFileHandle.name);rcRemember(charFileHandle);});
-      })["catch"](function(){return pickAndSave(json);});
-      return;
-    }
-    pickAndSave(json);
+    if(!charFileHandle){pickAndSave(json);return;}
+    var msg="Overwrite "+charFileHandle.name+"?"+NL+NL+"Cancel to save it somewhere else instead.";
+    if(!confirm(msg)){pickAndSave(json);return;}
+    grantWrite(charFileHandle).then(function(ok){
+      if(!ok)return pickAndSave(json);
+      return writeHandle(charFileHandle,json).then(function(){toast("Saved to "+charFileHandle.name);rcRemember(charFileHandle);});
+    })["catch"](function(){return pickAndSave(json);});
   }
   // Loading through the picker gives us a handle we can overwrite later.
   function loadViaPicker(fallbackInputId){
     if(!canFilePicker()){$(fallbackInputId).click();return;}
-    window.showOpenFilePicker({multiple:false,
-      types:[{description:"Character file",accept:{"application/json":[".json"]}}]})
+    saveDirHint().then(function(hint){
+      var opts={multiple:false,id:PICKER_ID,types:CHAR_TYPES};
+      if(hint)opts.startIn=hint;
+      return window.showOpenFilePicker(opts);
+    })
       .then(function(hs){
         var h=hs[0];charFileHandle=h;
         return h.getFile().then(function(f){loadCharFile(f);});
@@ -3010,6 +3037,7 @@
 
   // wizard step navigation
   $("menuBtn").addEventListener("click",function(){$("stepsMenu").classList.toggle("open");});
+  $("saveBtn").addEventListener("click",function(){saveChar();});
   $("darkToggle").addEventListener("click",function(){state.sheet.dark=!state.sheet.dark;document.body.classList.toggle("dark",state.sheet.dark);this.innerHTML=state.sheet.dark?"☀":"🌙";});
   Array.prototype.forEach.call(document.querySelectorAll(".step"),function(b){b.addEventListener("click",function(){setStep(b.getAttribute("data-step"));});});
   $("toBackground").addEventListener("click",function(){setStep("background");});
@@ -3030,8 +3058,6 @@
   $("toEquipment2").addEventListener("click",function(){setStep("equipment");});
   $("toSheet").addEventListener("click",function(){setStep("sheet");});
   $("toSpells2").addEventListener("click",function(){setStep("spells");});
-  $("btnSave").addEventListener("click",function(){$("stepsMenu").classList.remove("open");saveChar(false);});
-  $("btnSaveAs").addEventListener("click",function(){$("stepsMenu").classList.remove("open");saveChar(true);});
   $("btnLoad").addEventListener("click",function(){$("stepsMenu").classList.remove("open");loadViaPicker("fileLoad");});
   $("btnLoadStart").addEventListener("click",function(){loadViaPicker("fileLoadStart");});
   $("btnPdf").addEventListener("click",function(){$("stepsMenu").classList.remove("open");exportPdf();});

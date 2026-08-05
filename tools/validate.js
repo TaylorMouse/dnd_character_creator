@@ -817,6 +817,31 @@ var nasty=C.rcCardHtml({id:9,file:'x".json',name:'<script>bad</script>',cls:"",l
                         edition:"classic",portrait:null,when:NOW});
 checkTrue("  a hostile name is escaped",nasty.indexOf("<script>")<0);
 
+
+// =====================================================================
+section("7r. Every element app.js binds to exists in index.html");
+// Markup and code drift apart easily: removing a menu button leaves a listener that
+// throws at start-up and takes the whole app with it.
+var _html=readFile(ROOT+"index.html");
+var _ids={},_m,_re=/id="([^"]+)"/g;
+while((_m=_re.exec(_html)))_ids[_m[1]]=1;
+var _app=app;                       // already read at the top of this file
+var _bound=[],_b={},_re2=/\$\("([^"]+)"\)\.addEventListener/g;
+while((_m=_re2.exec(_app)))if(!_b[_m[1]]){_b[_m[1]]=1;_bound.push(_m[1]);}
+checkTrue("  index.html declares ids at all",Object.keys(_ids).length>50);
+checkTrue("  app.js binds listeners directly",_bound.length>20);
+var _absent=[];
+for(var _i=0;_i<_bound.length;_i++)if(!_ids[_bound[_i]])_absent.push(_bound[_i]);
+check("  every directly bound id is in the markup",_absent.join(", ")||"none","none");
+// the save control moved out of the menu and next to the theme toggle
+checkTrue("  a save button exists beside the theme toggle",!!_ids["saveBtn"]&&!!_ids["darkToggle"]);
+checkTrue("  the old menu entries are gone",!_ids["btnSave"]&&!_ids["btnSaveAs"]);
+checkTrue("  ...and nothing still refers to them",_app.indexOf('$("btnSave")')<0&&_app.indexOf('$("btnSaveAs")')<0);
+checkTrue("  loading is still reachable from the menu",!!_ids["btnLoad"]);
+checkTrue("  saving asks before it overwrites",_app.indexOf("Overwrite ")>=0&&_app.indexOf("confirm(msg)")>=0);
+checkTrue("  both pickers share a folder memory",(_app.match(/id:PICKER_ID/g)||[]).length===2);
+checkTrue("  ...and open where the character's file lives",(_app.match(/opts.startIn=hint/g)||[]).length===2);
+
 // =====================================================================
 section("8. Data integrity");
 check("  core class/edition combos",classes.length,26);

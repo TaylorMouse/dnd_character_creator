@@ -295,7 +295,9 @@ body.dark .inv-res-item .res-name-click:hover{background:#31302c}
 /* character sheet */
 .sheet-toolbar{display:flex;gap:10px;justify-content:flex-end;margin-bottom:12px}
 .sheet-toolbar .btn,.sheet-toolbar label.btn{font-size:13px;padding:9px 16px;cursor:pointer}
-.dark-toggle{margin-left:auto;background:#fff;border:1px solid var(--line2);border-radius:8px;padding:5px 10px;font-size:18px;line-height:1;cursor:pointer}
+/* the save and theme buttons sit together at the far right of the top bar */
+.top-actions{margin-left:auto;display:flex;gap:8px;align-items:center}
+.dark-toggle{background:#fff;border:1px solid var(--line2);border-radius:8px;padding:5px 10px;font-size:18px;line-height:1;cursor:pointer}
 .dark-toggle:hover{border-color:var(--accent)}
 
 /* dark mode — applied to the whole view while on the sheet */
