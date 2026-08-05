@@ -2183,6 +2183,17 @@
     return (notes?notes+" · ":"")+c.join(" · ");
   }
   function dmgAbbr(c){return {P:"piercing",S:"slashing",B:"bludgeoning"}[c]||c||"";}
+  /* A Monk's Martial Arts turns the flat "1" of an unarmed strike into the Martial Arts
+     die and lets Dexterity stand in for Strength on the attack and damage. It works only
+     while unarmored and not wielding a shield, which is the Monk's normal state. Returns
+     the die for this level (e.g. "1d6"), or "" when it does not apply. */
+  function martialArtsDie(){
+    var lv=state.level-1,die="";
+    condMods().forEach(function(m){if(m.kind==="martialArts"){var v=m.values[lv];if(v)die=v;}});
+    if(!die)return "";
+    var w=wornArmor();
+    return (w.body||w.shield)?"":die;      // armour or a shield turns Martial Arts off
+  }
   // Attacks granted by a feature's sub-options, e.g. Path of the Beast's Bite / Claws / Tail.
   function featureAttacks(){
     var out=[],seen={};
@@ -2249,12 +2260,26 @@
       rows+=row(w.name,w.wtype==="R"?"Ranged Weapon":"Melee Weapon",range,modStr(mod+prof),dstr,notes,
                 "Equipped item"+(it.source?" — "+sourceName(it.source):""),itemEntriesFull(it));
     });
-    rows+=row("Unarmed Strike","Melee","5 ft.",modStr(strM+prof),Math.max(1,1+strM+fxDmgFor({melee:true,str:true}))+" bludgeoning",
-              withCond("",{melee:true,str:true,unarmed:true}),
-              "Available to every character",    // unarmed damage is always at least 1
-              ["A punch, kick, head-butt or similar blow, made in place of a weapon attack. "+
-               "Every character is proficient with it, and it deals bludgeoning damage equal to "+
-               "1 + your Strength modifier — never less than 1."]);
+    var maDie=martialArtsDie();
+    if(maDie){
+      // Monk: the Martial Arts die replaces the flat 1, and Dexterity may stand in for Strength
+      var uMod=Math.max(strM,dexM)+fxDmgFor({melee:true,str:true});
+      rows+=row("Unarmed Strike","Melee (Martial Arts)","5 ft.",modStr(Math.max(strM,dexM)+prof),
+                maDie+(uMod>0?"+"+uMod:(uMod<0?""+uMod:""))+" bludgeoning",
+                withCond("",{melee:true,str:true}),   // no unarmed note; the die is in the damage column
+                "Monk — Martial Arts",
+                ["A punch, kick, head-butt or similar blow. Your Martial Arts feature lets you "+
+                 "roll the "+maDie+" Martial Arts die in place of the normal unarmed damage and "+
+                 "use your Dexterity modifier instead of Strength for the attack and damage rolls. "+
+                 "It applies while you are unarmored and not wielding a shield."]);
+    }else{
+      rows+=row("Unarmed Strike","Melee","5 ft.",modStr(strM+prof),Math.max(1,1+strM+fxDmgFor({melee:true,str:true}))+" bludgeoning",
+                withCond("",{melee:true,str:true,unarmed:true}),
+                "Available to every character",    // unarmed damage is always at least 1
+                ["A punch, kick, head-butt or similar blow, made in place of a weapon attack. "+
+                 "Every character is proficient with it, and it deals bludgeoning damage equal to "+
+                 "1 + your Strength modifier — never less than 1."]);
+    }
     featureAttacks().forEach(function(a){                 // e.g. Bite / Claws / Tail from Form of the Beast
       var usesStr=!a.finesse||strM>=dexM;
       var mod=a.finesse?Math.max(strM,dexM):strM;                       // attack roll

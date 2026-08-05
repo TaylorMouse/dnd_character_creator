@@ -56,6 +56,7 @@ app=app.replace("populateLevels();showEdition();",
  "featuresAndTraits:featuresAndTraits,condNotesFor:condNotesFor,officialLanguages:officialLanguages,languagesAll:languagesAll,mergedLanguages:mergedLanguages,"+
  "expandFeatureRefs:expandFeatureRefs,featureAttacks:featureAttacks,actionsCardHtml:actionsCardHtml,"+
  "fxAvailable:fxAvailable,fxActive:fxActive,fxTotals:fxTotals,fxDmgFor:fxDmgFor,concOptions:concOptions,acBreakdown:acBreakdown,"+
+ "martialArtsDie:martialArtsDie,actionsCardHtml:actionsCardHtml,"+
  "srcAbbr:srcAbbr,sourceName:sourceName,isHomebrew:isHomebrew,itemAllowed:itemAllowed,"+
  "rcCardHtml:rcCardHtml,rcWhen:rcWhen,defences:defences,expertiseSkills:expertiseSkills,skillBonus:skillBonus,passiveScore:passiveScore,"+
  "itemMechanics:itemMechanics,skillAdvantage:skillAdvantage};");
@@ -857,6 +858,43 @@ checkTrue("  the PDF button keeps its icon while building",_app.indexOf('classLi
 checkTrue("  saving asks before it overwrites",_app.indexOf("Overwrite ")>=0&&_app.indexOf("confirm(msg)")>=0);
 checkTrue("  both pickers share a folder memory",(_app.match(/id:PICKER_ID/g)||[]).length===2);
 checkTrue("  ...and open where the character's file lives",(_app.match(/opts.startIn=hint/g)||[]).length===2);
+
+
+// =====================================================================
+section("7s. Monk unarmed strike uses the Martial Arts die and Dexterity");
+function unarmedRow(){var c=C.actionsCardHtml(),i=c.indexOf("Unarmed Strike");
+  return c.substr(i,180).replace(/<[^>]*>/g," ").replace(/  +/g," ");}
+// classic Monk: die is 1d4 -> 1d6 -> 1d8 -> 1d10 by tier, Dex replaces Str
+var MA_CLASSIC={1:"1d4",5:"1d6",11:"1d8",17:"1d10"};
+for(var L in MA_CLASSIC){
+  setup("monk-classic","Monk",+L);
+  S.abilities.base={Strength:10,Dexterity:16,Constitution:14,Intelligence:10,Wisdom:14,Charisma:8};
+  check("  classic Monk L"+L+" Martial Arts die",C.martialArtsDie(),MA_CLASSIC[L]);
+  var row=unarmedRow();
+  checkTrue("  ...unarmed strike shows the die + Dex mod",row.indexOf(MA_CLASSIC[L]+"+3 bludgeoning")>=0);
+  checkTrue("  ...and is labelled Martial Arts",row.indexOf("Martial Arts")>=0);
+}
+// the attack roll uses Dexterity and the proficiency bonus
+setup("monk-classic","Monk",5);
+S.abilities.base={Strength:10,Dexterity:16,Constitution:14,Intelligence:10,Wisdom:14,Charisma:8};
+checkTrue("  attack roll is Dex + prof (+6)",unarmedRow().indexOf("+6 1d6")>=0);
+// 2024 Monk starts a tier higher
+setup("monk-one","Monk",1);
+S.abilities.base={Strength:10,Dexterity:16,Constitution:14,Intelligence:10,Wisdom:14,Charisma:8};
+check("  2024 Monk L1 die",C.martialArtsDie(),"1d6");
+// Martial Arts needs no armour and no shield
+setup("monk-classic","Monk",5);
+S.abilities.base={Strength:10,Dexterity:16,Constitution:14,Intelligence:10,Wisdom:14,Charisma:8};
+S.equipment.inventory=[{name:"Chain Mail",source:"PHB",cat:"Armor",ac:16,armorKind:"heavy",qty:1,equipped:true}];
+check("  armour switches Martial Arts off",C.martialArtsDie(),"");
+checkTrue("  ...and the strike reverts to 1 + Str",unarmedRow().indexOf("1 bludgeoning")>=0);
+S.equipment.inventory=[{name:"Shield",source:"PHB",cat:"Armor",ac:2,armorKind:"shield",qty:1,equipped:true}];
+check("  a shield switches it off too",C.martialArtsDie(),"");
+// no Martial Arts for other classes
+setup("fighter-classic","Fighter",5);
+S.abilities.base={Strength:16,Dexterity:12,Constitution:14,Intelligence:10,Wisdom:10,Charisma:8};
+check("  a Fighter has no Martial Arts die",C.martialArtsDie(),"");
+checkTrue("  ...and keeps the plain unarmed strike (1 + Str 16 = 4)",unarmedRow().indexOf("4 bludgeoning")>=0&&unarmedRow().indexOf("Martial Arts")<0);
 
 // =====================================================================
 section("8. Data integrity");
