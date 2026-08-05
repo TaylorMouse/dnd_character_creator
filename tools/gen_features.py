@@ -24,8 +24,16 @@ SKILL_CANON = {
  "stealth":"Stealth","survival":"Survival"}
 ALLSKILLS = list(SKILL_CANON.values())
 
+sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+import homebrew
+
 classFiles = [f for f in glob.glob(os.path.join(DATA,"class-*.json")) if "fluff" not in f]
 docs = [json.load(open(f, encoding="utf-8")) for f in classFiles]
+# A homebrew book defines subclasses for existing classes in its own single file, so
+# it joins the document list; its features are then indexed like any other.
+HB_DOCS, _hb_sources = homebrew.load(_DATA_ROOT)
+HB_CODES = set(s["json"] for s in _hb_sources)
+docs = docs + HB_DOCS
 
 # ---- optional features index ----
 of = json.load(open(os.path.join(ROOT,"optionalfeatures.json"), encoding="utf-8"))
@@ -64,6 +72,11 @@ def prereq_text(pr):
 classFeatureIdx, subclassFeatureIdx = {}, {}
 def cf_key(n,cn,cs,l,s): return "|".join([n,cn,cs,str(l),s])
 def scf_key(n,cn,cs,ss,scs,l,s): return "|".join([n,cn,cs,ss,scs,str(l),s])
+subclassesByClass = {}      # (className, classSource) -> [subclass, ...]
+for d in docs:
+    for sc in d.get("subclass", []):
+        cn, cs = sc.get("className"), sc.get("classSource")
+        if cn and cs: subclassesByClass.setdefault((cn, cs), []).append(sc)
 for d in docs:
     for f in d.get("classFeature", []):
         classFeatureIdx[cf_key(f["name"],f["className"],f["classSource"],f["level"],f.get("source",f["classSource"]))] = f
@@ -214,8 +227,7 @@ for d in docs:
                     for o in ofByType.get(t, []): pool.append(opt_slim(o))
 
         subclasses = []
-        for sc in d.get("subclass", []):
-            if sc.get("className") != name or sc.get("classSource") != c["source"]: continue
+        for sc in subclassesByClass.get((name, c["source"]), []):
             feats = []
             for ref in sc.get("subclassFeatures", []):
                 f = subclassFeatureIdx.get(parse_scf_ref(ref))
@@ -233,8 +245,10 @@ for d in docs:
                     for t in p.get("featureType", []):
                         for o in ofByType.get(t, []): pool.append(opt_slim(o))
             if feats:
+                _scsrc = sc.get("source", c["source"])
                 subclasses.append({"name": sc["name"], "shortName": sc.get("shortName", sc["name"]),
-                    "source": sc.get("source", c["source"]), "features": feats, "optProgression": scProg})
+                    "source": _scsrc, "hb": _scsrc in HB_CODES,
+                    "features": feats, "optProgression": scProg})
 
         obj = {"key": slug, "name": name, "source": c["source"], "edition": edition,
                "hd": c.get("hd", {"number":1,"faces":c.get("hd",{}).get("faces")}),

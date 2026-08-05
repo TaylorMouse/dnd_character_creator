@@ -7,9 +7,16 @@ _DATA_ROOT = sys.argv[1] if len(sys.argv) > 1 else _DEFAULT_DATA
 _REPO = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
 _RES  = _os.path.join(_REPO, "resources")
 
+sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+import homebrew
+
 DATA=_DATA_ROOT
 d=json.load(open(os.path.join(DATA,"races.json"),encoding="utf-8"))
 races=d["race"]; subs=d.get("subrace",[])
+# homebrew species merge in as extra entries
+_hb_codes=homebrew.source_codes(_DATA_ROOT)
+races=list(races)+list(homebrew.merged(_DATA_ROOT,"race"))
+subs=list(subs)+list(homebrew.merged(_DATA_ROOT,"subrace"))
 ABIL={"str":"Strength","dex":"Dexterity","con":"Constitution","int":"Intelligence","wis":"Wisdom","cha":"Charisma"}
 SIZE={"T":"Tiny","S":"Small","M":"Medium","L":"Large","H":"Huge","G":"Gargantuan"}
 CORE_PHB={"Dragonborn","Dwarf","Elf","Gnome","Half-Elf","Half-Orc","Halfling","Human","Tiefling"}
@@ -147,6 +154,7 @@ def base_obj(r):
     o={
       "name":r.get("name",""),"source":r.get("source",""),"edition":r.get("edition","classic"),
       "lineage":lineage,"langNote":lang_note,
+      "hb":r.get("source") in _hb_codes,
       "size":", ".join(SIZE.get(s,s) for s in (r.get("size") or [])),
       "speed":parse_speed(r.get("speed")),
       "senses":senses_of(r),
@@ -215,6 +223,7 @@ for k in out:
 p=_os.path.join(_RES, 'data-races.js')
 io.open(p,"w",encoding="utf-8").write("// Auto-generated from 5etools v2.24.3 races.json\nwindow.CC_RACES = "+json.dumps(out,ensure_ascii=False)+";\n")
 print("classic:",len(out["classic"]),"| one:",len(out["one"]),"|",round(os.path.getsize(p)/1024),"KB")
+print("homebrew species:",[x["name"] for k in out for x in out[k] if x.get("hb")])
 def show(nm,ed):
     r=[x for x in out[ed] if x["name"]==nm and x["isCore"]]
     if not r: r=[x for x in out[ed] if x["name"]==nm]

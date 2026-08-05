@@ -8,3 +8,8 @@ desktop.ini
 # scratch / temp
 scratchpad/
 *.tmp
+__pycache__/
+*.pyc
+
+# homebrew books live outside the repo; ignore any dropped in by mistake
+homebrew/

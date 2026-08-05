@@ -5,6 +5,9 @@ _DATA_ROOT = sys.argv[1] if len(sys.argv) > 1 else _DEFAULT_DATA
 _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _RES = os.path.join(_REPO, "resources")
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import homebrew
+
 OUT = os.path.join(_RES, "data-sources.js")
 
 found = {}
@@ -30,7 +33,24 @@ for code, title in {
 }.items():
     found.setdefault(code, title)
 
+# Homebrew books name themselves in _meta.sources. The code that appears on their
+# entries ("GriffonsSaddlebag2") is not what a reader wants on a character sheet, so
+# the short abbreviation the book declares ("TGS2") is kept alongside it, and the code
+# is recorded as homebrew so the app can say so rather than pass it off as official.
+abbr, hb = {}, {}
+_docs, _sources = homebrew.load(_DATA_ROOT)
+for s in _sources:
+    code = s["json"]
+    found[code] = s.get("full", code)
+    if s.get("abbreviation") and s["abbreviation"] != code:
+        abbr[code] = s["abbreviation"]
+    hb[code] = ", ".join(s.get("authors", [])) or True
+
 io.open(OUT, "w", encoding="utf-8").write(
     "// Auto-generated source abbreviation -> full book title, from 5etools books/adventures\n"
-    "window.CC_SOURCES = " + json.dumps(found, ensure_ascii=False, sort_keys=True) + ";\n")
-print("sources:", len(found))
+    "window.CC_SOURCES = " + json.dumps(found, ensure_ascii=False, sort_keys=True) + ";\n"
+    "// Long source codes shown under the shorter abbreviation the book declares itself\n"
+    "window.CC_SOURCE_ABBR = " + json.dumps(abbr, ensure_ascii=False, sort_keys=True) + ";\n"
+    "// Third-party sources -> author, so the app can mark them as homebrew\n"
+    "window.CC_HOMEBREW = " + json.dumps(hb, ensure_ascii=False, sort_keys=True) + ";\n")
+print("sources:", len(found), "| homebrew:", sorted(hb))

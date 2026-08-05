@@ -24,6 +24,9 @@ body{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--b
 
 /* source abbreviation: hover reveals the full book title */
 .src{cursor:help;border-bottom:1px dotted currentColor}
+/* third-party content is marked so it is never mistaken for an official book */
+.src-hb{color:#8a6a2f;border-bottom-style:dashed;font-weight:700}
+body.dark .src-hb{color:#d5ab5e}
 
 /* edition screen */
 .edition-hero{text-align:center;padding:34px 0 10px}

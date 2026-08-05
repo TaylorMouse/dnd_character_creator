@@ -7,10 +7,17 @@ _DATA_ROOT = sys.argv[1] if len(sys.argv) > 1 else _DEFAULT_DATA
 _REPO = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
 _RES  = _os.path.join(_REPO, "resources")
 
+sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+import homebrew
+
 DATA=_DATA_ROOT
 _ib=json.load(open(os.path.join(DATA,"items-base.json"),encoding="utf-8"))
 base=_ib["baseitem"]
 items=json.load(open(os.path.join(DATA,"items.json"),encoding="utf-8"))["item"]
+# homebrew books add items of their own; they are keyed exactly like official ones
+_hb_items=homebrew.merged(_DATA_ROOT,"item")
+_hb_codes=homebrew.source_codes(_DATA_ROOT)
+items=list(items)+list(_hb_items)
 # weapon/item property code -> readable name
 PMAP={}
 for p in _ib.get("itemProperty",[]):
@@ -54,6 +61,7 @@ def slim(it):
     if it.get("wondrous"): o["cat"]="Wondrous"
     if it.get("entries"): o["entries"]=it["entries"]
     if it.get("edition"): o["edition"]=it["edition"]   # base items say 'classic' / 'one'
+    if it.get("source") in _hb_codes: o["hb"]=True     # third-party, flagged in the UI
     ra=it.get("reqAttune")
     if ra: o["attune"]=ra          # True | "optional" | condition string e.g. "by a spellcaster"
     if it.get("bonusWeapon"): o["bonusWeapon"]=it["bonusWeapon"]   # "+1" / "+2" / "+3"
@@ -75,6 +83,7 @@ for it in list(base)+list(items):
     out.append(slim(it))
 # magic variants (Flame Tongue, Frost Brand, Vorpal, +1/+2/+3 gear, etc.)
 mvs=json.load(open(os.path.join(DATA,"magicvariants.json"),encoding="utf-8"))["magicvariant"]
+mvs=list(mvs)+list(homebrew.merged(_DATA_ROOT,"magicvariant"))
 def variant_cat(v):
     for r in (v.get("requires") or []):
         if r.get("sword") or r.get("weapon") or r.get("bow") or r.get("crossbow") or r.get("dmgType") or r.get("type") in ("M","R"): return "Weapon"
@@ -95,6 +104,7 @@ for v in mvs:
     if inh.get("reqAttune"): vo["attune"]=inh["reqAttune"]
     if inh.get("bonusWeapon"): vo["bonusWeapon"]=inh["bonusWeapon"]
     if inh.get("bonusAc"): vo["bonusAc"]=inh["bonusAc"]
+    if vo["source"] in _hb_codes: vo["hb"]=True
     # which base items this variant may be applied to (e.g. [{"sword":true}] -> ["sword"])
     req=[]
     for r in (v.get("requires") or []):
@@ -107,6 +117,7 @@ p=_os.path.join(_RES, 'data-items.js')
 io.open(p,"w",encoding="utf-8").write("// Auto-generated from 5etools v2.24.3 items-base.json + items.json\nwindow.CC_ITEMS = "+json.dumps(out,ensure_ascii=False)+";\n")
 from collections import Counter
 print("items:",len(out),"|",round(os.path.getsize(p)/1024),"KB")
+print("of which homebrew:",sum(1 for x in out if x.get("hb")),"from",sorted(_hb_codes) or "-")
 print("by category:",Counter(x["cat"] for x in out))
 # samples
 for nm in ("Leather Armor","Shield","Longsword","Potion of Healing"):

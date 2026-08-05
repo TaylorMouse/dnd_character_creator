@@ -37,7 +37,7 @@ var ROOT=fso.GetParentFolderName(fso.GetParentFolderName(WScript.ScriptFullName)
 
 // ---------- load data + app ----------
 var dataFiles=["data-classes.js","data-feats.js","data-backgrounds.js","data-races.js",
-               "data-items.js","data-starting.js","data-spells.js","data-spellcasting.js","data-resources.js","data-speed.js","data-condmods.js","data-languages.js"];
+               "data-items.js","data-sources.js","data-starting.js","data-spells.js","data-spellcasting.js","data-resources.js","data-speed.js","data-condmods.js","data-languages.js"];
 for(var i=0;i<dataFiles.length;i++) eval(readFile(ROOT+"resources\\"+dataFiles[i]));
 // every generated per-class feature file
 var featDir=fso.GetFolder(ROOT+"resources\\features"),fe=new Enumerator(featDir.Files);
@@ -55,7 +55,8 @@ app=app.replace("populateLevels();showEdition();",
  "featureAttacks:featureAttacks,featureSkillChoice:featureSkillChoice,featureSkillPicks:featureSkillPicks,"+
  "featuresAndTraits:featuresAndTraits,condNotesFor:condNotesFor,officialLanguages:officialLanguages,languagesAll:languagesAll,mergedLanguages:mergedLanguages,"+
  "expandFeatureRefs:expandFeatureRefs,featureAttacks:featureAttacks,actionsCardHtml:actionsCardHtml,"+
- "fxAvailable:fxAvailable,fxActive:fxActive,fxTotals:fxTotals,fxDmgFor:fxDmgFor,concOptions:concOptions,acBreakdown:acBreakdown,defences:defences,expertiseSkills:expertiseSkills,skillBonus:skillBonus,passiveScore:passiveScore,"+
+ "fxAvailable:fxAvailable,fxActive:fxActive,fxTotals:fxTotals,fxDmgFor:fxDmgFor,concOptions:concOptions,acBreakdown:acBreakdown,"+
+ "srcAbbr:srcAbbr,sourceName:sourceName,isHomebrew:isHomebrew,itemAllowed:itemAllowed,defences:defences,expertiseSkills:expertiseSkills,skillBonus:skillBonus,passiveScore:passiveScore,"+
  "itemMechanics:itemMechanics,skillAdvantage:skillAdvantage};");
 eval(app);
 var C=window.__cc,S=C.state;
@@ -716,6 +717,67 @@ checkTrue("  the status bar names it",_els["sheetPanel"].innerHTML.indexOf("CONC
 checkTrue("  the sheet frame is tinted",_els["sheetPanel"].className.indexOf("fx-conc-on")>=0);
 S.sheet.conc="Fireball|PHB";
 checkTrue("  a spell without concentration cannot be held",!C.fxActive().length&&_els["sheetPanel"]!==null);
+
+
+// =====================================================================
+section("7p. Homebrew books merge in and are labelled as homebrew");
+// Content is only checked if a homebrew book is actually present, so the suite still
+// passes on a clean official-only data set.
+var hbCodes=[];for(var hk in (window.CC_HOMEBREW||{}))hbCodes.push(hk);
+if(!hbCodes.length){
+  WScript.Echo("  (no homebrew book in this data set - skipped)");
+}else{
+  var code=hbCodes[0];
+  checkTrue("  the book is flagged as homebrew",C.isHomebrew(code));
+  checkTrue("  an official book is not",!C.isHomebrew("PHB"));
+  checkTrue("  it is shown under its own short abbreviation",C.srcAbbr(code).length<code.length);
+  checkTrue("  ...and named in full on hover",C.sourceName(code).indexOf("homebrew")>=0);
+  // items
+  var hbItems=(window.CC_ITEMS||[]).filter(function(x){return x.hb;});
+  checkTrue("  its items are in the item list",hbItems.length>0);
+  var blocked=0;
+  setup("fighter-classic","Fighter",5);
+  for(var i=0;i<hbItems.length;i++)if(!C.itemAllowed(hbItems[i]))blocked++;
+  check("  none are filtered out by the rules edition",blocked,0);
+  var hbW=hbItems.filter(function(x){return x.cat==="Weapon"&&x.dmg;});
+  checkTrue("  including usable weapons",hbW.length>0);
+  // a homebrew weapon behaves like any other on the sheet
+  var w=hbW[0];
+  S.equipment.inventory=[{name:w.name,source:w.source,cat:"Weapon",dmg:w.dmg,dmgType:w.dmgType,
+                          weaponCat:w.weaponCat,wtype:w.wtype,qty:1,equipped:true,attuned:true}];
+  checkTrue("  and appears as an attack",C.actionsCardHtml().indexOf(w.name)>=0);
+  S.equipment.inventory=[];
+  // species
+  var hbRaces=[];
+  for(var ed in (window.CC_RACES||{}))
+    (window.CC_RACES[ed]||[]).forEach(function(r){if(r.hb)hbRaces.push(r);});
+  checkTrue("  its species are selectable",hbRaces.length>0);
+  // subclasses, on the classes they were written for
+  var hbSub=0,classesTouched={};
+  (window.CC_CLASSES||[]).forEach(function(cl){
+    var fd=window.CC_FEATURE_DATA[cl.slug];if(!fd)return;
+    (fd.subclasses||[]).forEach(function(s){
+      if(!s.hb)return;
+      hbSub++;classesTouched[cl.slug]=1;
+      if(!s.features.length)fails.push("  homebrew subclass with no features: "+s.name);
+    });
+  });
+  checkTrue("  its subclasses are attached to their classes",hbSub>0);
+  // and a character built on one works end to end
+  var found=null;
+  (window.CC_CLASSES||[]).forEach(function(cl){
+    if(found)return;
+    var fd=window.CC_FEATURE_DATA[cl.slug];if(!fd)return;
+    (fd.subclasses||[]).forEach(function(s){if(!found&&s.hb)found={cl:cl,sub:s};});
+  });
+  if(found){
+    setup(found.cl.slug,found.cl.name,20);S.subclassName=found.sub.name;
+    C.render();
+    var html=_els["sheetPanel"].innerHTML;
+    checkTrue("  a character on "+found.sub.name+" renders",html.indexOf("Sheet error")<0);
+    checkTrue("  ...with its features listed",html.indexOf(found.sub.features[0].name)>=0);
+  }
+}
 
 // =====================================================================
 section("8. Data integrity");

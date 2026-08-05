@@ -67,6 +67,23 @@ Until you do this, the app shows a short notice explaining the same thing. Each 
 runs standalone and accepts the data root as its first argument. The app was last built and
 validated against 5etools **v2.33.1**.
 
+### Optional: homebrew books
+
+A 5etools-format homebrew book is a single JSON file that declares itself in `_meta.sources` and
+holds its content under the same keys as the official data. Drop one somewhere the generators look
+and it is merged in on the next `regen_all.py` — its items appear in the equipment browser, its
+species in the species step, and its subclasses under the classes they belong to. Nothing is
+hardcoded per book.
+
+Searched, in order: `$CC_HOMEBREW` (files or folders, `;` separated), `homebrew/` in this repo,
+`homebrew/` beside your 5etools folder, and loose `.json` files next to it. A file is only treated
+as homebrew if it declares `_meta.sources`, so unrelated JSON in those folders is ignored.
+
+Homebrew content is labelled in the app: the source tag shows the abbreviation the book declares
+for itself, styled differently from official books, and its tooltip names the book, its author and
+the fact that it is homebrew. Keep the books outside this repository — third-party content is no
+more redistributable here than Wizards' own.
+
 ### Optional: PDF export
 
 To export a filled official character sheet you need two more local files in `resources/`:

@@ -53,12 +53,27 @@
     var g=window.CC_SOURCES&&window.CC_SOURCES[code];
     return g||SOURCE_NAMES[code]||"";
   }
-  function sourceName(code){var t=bookTitle(code);return t?t+" ("+code+")":code;}
+  /* Homebrew books use a long code on their entries ("GriffonsSaddlebag2") but declare
+     a short abbreviation of their own ("TGS2"), which is what belongs on a sheet. */
+  function srcAbbr(code){
+    return (window.CC_SOURCE_ABBR&&window.CC_SOURCE_ABBR[code])||code;
+  }
+  // Third-party content is labelled as such rather than passed off as official.
+  function hbAuthor(code){
+    var h=window.CC_HOMEBREW&&window.CC_HOMEBREW[code];
+    return h?(typeof h==="string"?h:""):null;
+  }
+  function isHomebrew(code){return hbAuthor(code)!==null;}
+  function sourceName(code){
+    var t=bookTitle(code),a=hbAuthor(code);
+    var tail=isHomebrew(code)?" — homebrew"+(a?" by "+a:""):"";
+    return (t?t+" ("+srcAbbr(code)+")":srcAbbr(code))+tail;
+  }
   // An abbreviation that reveals the full book title on hover.
   function srcTag(code){
     if(!code)return "";
-    var t=bookTitle(code);
-    return '<span class="src"'+(t?' title="'+esc(t)+'"':"")+">"+esc(code)+"</span>";
+    var hb=isHomebrew(code);
+    return '<span class="src'+(hb?" src-hb":"")+'" title="'+esc(sourceName(code))+'">'+esc(srcAbbr(code))+"</span>";
   }
   // Subclass features that require picking one row from a table (e.g. which dragon).
   var TABLE_CHOICES=[
@@ -207,7 +222,7 @@
     var core=state.edition==="one"?"XPHB":"PHB";
     var coreList=list.filter(function(b){return b.source===core;});
     var expList=list.filter(function(b){return b.source!==core;});
-    function opt(b){return '<option value="'+esc(b.name+"|"+b.source)+'" title="'+esc(sourceName(b.source))+'">'+esc(b.name+(b.source!==core?" ("+b.source+")":""))+"</option>";}
+    function opt(b){return '<option value="'+esc(b.name+"|"+b.source)+'" title="'+esc(sourceName(b.source))+'">'+esc(b.name+(b.source!==core?" ("+srcAbbr(b.source)+")":""))+"</option>";}
     var html='<option value="">— Choose a background —</option><option value="custom">✎ Custom Background (write your own)…</option>';
     if(coreList.length)html+='<optgroup label="Core">'+coreList.map(opt).join("")+"</optgroup>";
     if(expList.length)html+='<optgroup label="Expanded">'+expList.map(opt).join("")+"</optgroup>";
@@ -219,7 +234,7 @@
     var list=(window.CC_RACES&&window.CC_RACES[state.edition])||[];
     var coreList=list.filter(function(r){return r.isCore;});
     var expList=list.filter(function(r){return !r.isCore;});
-    function opt(r){var a=abilShort(r.ability);return '<option value="'+esc(r.name+"|"+r.source)+'" title="'+esc(sourceName(r.source))+'">'+esc(r.name+(!r.isCore?" ("+r.source+")":"")+(a?" ["+a+"]":""))+"</option>";}
+    function opt(r){var a=abilShort(r.ability);return '<option value="'+esc(r.name+"|"+r.source)+'" title="'+esc(sourceName(r.source))+'">'+esc(r.name+(!r.isCore?" ("+srcAbbr(r.source)+")":"")+(a?" ["+a+"]":""))+"</option>";}
     var html='<option value="">— Choose a species —</option>';
     if(coreList.length)html+='<optgroup label="Core">'+coreList.map(opt).join("")+"</optgroup>";
     if(expList.length)html+='<optgroup label="Expanded">'+expList.map(opt).join("")+"</optgroup>";
@@ -329,7 +344,7 @@
       var others=chosen.filter(function(v,idx){return idx!==i&&v;});
       var opts='<option value="">— Choose —</option>'+pool.map(function(o){
         var val=o.name,dis=others.indexOf(val)>=0?" disabled":"",sel=chosen[i]===val?" selected":"";
-        var lbl=o.name+(o.source&&fd&&o.source!==fd.source?" ("+o.source+")":"")+(o.prerequisite?" — "+o.prerequisite:"");
+        var lbl=o.name+(o.source&&fd&&o.source!==fd.source?" ("+srcAbbr(o.source)+")":"")+(o.prerequisite?" — "+o.prerequisite:"");
         return '<option value="'+esc(val)+'"'+dis+sel+(o.source?' title="'+esc(sourceName(o.source))+'"':"")+'>'+esc(lbl)+"</option>";
       }).join("");
       body+='<select class="choice-sel" data-group="'+esc(groupKey)+'" data-idx="'+i+'">'+opts+"</select>";
@@ -678,7 +693,7 @@
 
   function originPickerHtml(fd){
     var opts='<option value="">— Choose —</option>'+fd.subclasses.map(function(s){
-      var lbl=s.name+(s.source!==fd.source?" ("+s.source+")":"");
+      var lbl=s.name+(s.source!==fd.source?" ("+srcAbbr(s.source)+")":"");
       return '<option value="'+esc(s.name)+'" title="'+esc(sourceName(s.source))+'">'+esc(lbl)+"</option>";
     }).join("");
     return '<div class="origin-picker"><label>Choose your subclass</label><select id="originSelect">'+opts+"</select></div>";
@@ -1947,7 +1962,7 @@
     if(fd){
       (fd.classFeatures||[]).forEach(function(f){
         if(f.level>state.level||!optEnabled(f))return;
-        list.push(tag(f,state.className+" — class feature, level "+f.level+(f.optional?" (optional, "+f.source+")":"")));
+        list.push(tag(f,state.className+" — class feature, level "+f.level+(f.optional?" (optional, "+srcAbbr(f.source)+")":"")));
       });
       var chosen=state.subclassName?(fd.subclasses||[]).filter(function(s){return s.name===state.subclassName;})[0]:null;
       if(chosen)(chosen.features||[]).forEach(function(f){
