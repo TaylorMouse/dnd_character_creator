@@ -63,11 +63,14 @@
       <button class="hamburger" id="menuBtn">&#9776;</button>
       <span class="edition-tag" id="editionTag">2014 Core Rules</span>
       <span class="top-actions">
-        <button class="dark-toggle hidden" id="saveBtn" title="Save character">&#128190;</button>
-        <button class="dark-toggle hidden" id="darkToggle" title="Toggle dark mode">&#127769;</button>
+        <button class="icon-btn hidden" id="saveBtn" title="Save character"></button>
+        <button class="icon-btn hidden" id="pdfBtn" title="Export to PDF"></button>
+        <button class="icon-btn hidden" id="darkToggle" title="Toggle dark mode"></button>
       </span>
     </div>
     <div class="steps" id="stepsMenu">
+      <button class="step" id="changeEdition" title="Back to the start page — this clears the character you are building"><span class="step-n">&#8962;</span> Start Page</button>
+      <div class="menu-sep"></div>
       <button class="step" data-step="class"><span class="step-n">1</span> Class &amp; Features</button>
       <button class="step" data-step="background"><span class="step-n">2</span> Background &amp; Details</button>
       <button class="step" data-step="species"><span class="step-n">3</span> Species</button>
@@ -75,12 +78,6 @@
       <button class="step" data-step="equipment"><span class="step-n">5</span> Equipment</button>
       <button class="step" data-step="spells"><span class="step-n">6</span> Spells</button>
       <button class="step" data-step="sheet"><span class="step-n">7</span> Sheet</button>
-      <div class="menu-sep"></div>
-      <button class="menu-action" id="btnLoad">&#128193; Load character</button>
-      <input type="file" id="fileLoad" accept="application/json,.json" style="display:none">
-      <button class="menu-action" id="btnPdf">&#128196; Export to PDF</button>
-      <div class="menu-sep"></div>
-      <button class="step-change" id="changeEdition">&#8592; Change edition (start over)</button>
     </div>
 
     <!-- STEP: CLASS -->

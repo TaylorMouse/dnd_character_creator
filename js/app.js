@@ -89,6 +89,17 @@
   }
   var ALL=window.CC_CLASSES||[];
   function $(id){return document.getElementById(id);}
+  /* Icons are inline SVG stroked in currentColor rather than emoji, so every button
+     reads as monochrome and follows the text colour in both themes. */
+  var SVG_OPEN='<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
+  var ICON={
+    moon:SVG_OPEN+'<path d="M20.5 14.8A8.6 8.6 0 0 1 9.2 3.5a8.6 8.6 0 1 0 11.3 11.3Z"/></svg>',
+    sun:SVG_OPEN+'<circle cx="12" cy="12" r="4.2"/><path d="M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2M5.4 5.4l1.6 1.6M17 17l1.6 1.6M18.6 5.4 17 7M7 17l-1.6 1.6"/></svg>',
+    save:SVG_OPEN+'<path d="M5.5 3.5h9.8L20.5 8.7v11.8H5.5z"/><path d="M9 3.5v5.2h6V3.5"/><rect x="8.4" y="13" width="7.2" height="7.5"/></svg>',
+    pdf:SVG_OPEN+'<path d="M14 3.5H7.2v17h9.6V6.3z"/><path d="M14 3.5v2.8h2.8"/><path d="M9.6 12.2h4.8M9.6 15.2h4.8M9.6 18h3"/></svg>',
+    star:SVG_OPEN+'<path d="m12 4.2 2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.6-4.8 2.6.9-5.4-3.9-3.8 5.4-.8z"/></svg>',
+    starOn:'<svg class="ico" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><path d="m12 4.2 2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.6-4.8 2.6.9-5.4-3.9-3.8 5.4-.8z"/></svg>'
+  };
   function editionLabel(ed){return ed==="one"?"2024 Revised Rules":"2014 Core Rules";}
   function autoHp(faces,level){if(!faces||!level)return null;return faces+(level-1)*(Math.floor(faces/2)+1);}
   function classesForEdition(ed){return ALL.filter(function(c){return c.edition===ed&&c.isCore;}).sort(function(a,b){return a.name.localeCompare(b.name);});}
@@ -200,8 +211,9 @@
     var labels={"class":"1 · Class & Features",background:"2 · Background & Details",species:"3 · Species",abilities:"4 · Ability Scores",equipment:"5 · Equipment",spells:"6 · Spells",sheet:"7 · Character Sheet"};
     var mb=$("menuBtn");if(mb)mb.innerHTML="☰";
     var sm=$("stepsMenu");if(sm)sm.classList.remove("open");
-    var dk=$("darkToggle");if(dk){dk.classList.toggle("hidden",step!=="sheet");dk.innerHTML=state.sheet.dark?"☀":"🌙";}
-    var sb=$("saveBtn");if(sb)sb.classList.toggle("hidden",!state.className);
+    var dk=$("darkToggle");if(dk){dk.classList.toggle("hidden",step!=="sheet");dk.innerHTML=state.sheet.dark?ICON.sun:ICON.moon;}
+    var sb=$("saveBtn");if(sb){sb.classList.toggle("hidden",!state.className);sb.innerHTML=ICON.save;}
+    var pb=$("pdfBtn");if(pb){pb.classList.toggle("hidden",!state.className);pb.innerHTML=ICON.pdf;}
     document.body.classList.toggle("dark",step==="sheet"&&!!state.sheet.dark);
     var wrap=document.querySelector(".wrap");if(wrap)wrap.classList.toggle("wide",step==="sheet");
     render();               // always refresh the page we're navigating to with the latest state
@@ -2350,7 +2362,7 @@
 
     var html='<div class="sheet-head"><div class="sheet-portrait" id="sheetPortrait">'+(state.portrait?'<img src="'+state.portrait+'">':"&#9670;")+'</div><div><div class="sheet-name">'+esc(state.name||"Unnamed")+'</div><div class="sheet-sub">'+esc(sub)+"</div></div>"+
       '<div class="sheet-top">'+topStat("+"+prof,"Prof Bonus",profWhy())+topStat(esc(speedText()),"Speed",speedWhy())+topStat(modStr(init),"Initiative",initWhy())+acStatHtml(ac)+
-      '<div class="top-stat insp-box" id="inspBox"><div class="tv">'+(state.sheet.inspiration?"&#9733;":"&#9734;")+'</div><div class="tl">Inspiration</div></div>'+
+      '<div class="top-stat insp-box" id="inspBox"><div class="tv">'+(state.sheet.inspiration?ICON.starOn:ICON.star)+'</div><div class="tl">Inspiration</div></div>'+
       '<div class="top-stat sheet-hp"><div class="tv"><input type="number" id="hpCur" value="'+esc(state.sheet.hpCurrent)+'"> / '+(mhp==null?"—":mhp)+'</div><div class="tl">Hit Points</div></div>'+
       '<div class="top-stat"><div class="tv"><input type="number" id="hpTemp" class="stat-inp" value="'+esc(state.sheet.hpTemp||"")+'"></div><div class="tl">Temp HP</div></div>'+
       '<div class="top-stat"><div class="tv"><input type="number" id="xpInput" class="stat-inp xp-inp" value="'+esc(state.sheet.xp||"")+'"></div><div class="tl">XP</div></div></div></div>'+
@@ -2959,8 +2971,8 @@
     if(!window.PDFLib){alert("pdf-lib is missing.\n\nDownload pdf-lib.min.js into resources/ (see README).");return;}
     if(!window.CC_PDF_TEMPLATE){alert("No PDF sheet template found.\n\nSupply a form-fillable 5e sheet and run:\n  python tools/gen_pdf_template.py \"your-sheet.pdf\"");return;}
     if(!state.className){alert("Build a character first.");return;}
-    var btn=$("btnPdf"),old=btn.textContent;btn.textContent="Building…";btn.disabled=true;
-    function done(){btn.textContent=old;btn.disabled=false;}
+    var btn=$("pdfBtn");btn.classList.add("busy");btn.disabled=true;
+    function done(){btn.classList.remove("busy");btn.disabled=false;}
     PDFLib.PDFDocument.load(base64ToBytes(window.CC_PDF_TEMPLATE)).then(function(doc){
       fillPdfForm(doc.getForm());
       try{doc.getForm().updateFieldAppearances();}catch(e){}
@@ -3038,7 +3050,7 @@
   // wizard step navigation
   $("menuBtn").addEventListener("click",function(){$("stepsMenu").classList.toggle("open");});
   $("saveBtn").addEventListener("click",function(){saveChar();});
-  $("darkToggle").addEventListener("click",function(){state.sheet.dark=!state.sheet.dark;document.body.classList.toggle("dark",state.sheet.dark);this.innerHTML=state.sheet.dark?"☀":"🌙";});
+  $("darkToggle").addEventListener("click",function(){state.sheet.dark=!state.sheet.dark;document.body.classList.toggle("dark",state.sheet.dark);this.innerHTML=state.sheet.dark?ICON.sun:ICON.moon;});
   Array.prototype.forEach.call(document.querySelectorAll(".step"),function(b){b.addEventListener("click",function(){setStep(b.getAttribute("data-step"));});});
   $("toBackground").addEventListener("click",function(){setStep("background");});
   $("toClass").addEventListener("click",function(){setStep("class");});
@@ -3058,10 +3070,8 @@
   $("toEquipment2").addEventListener("click",function(){setStep("equipment");});
   $("toSheet").addEventListener("click",function(){setStep("sheet");});
   $("toSpells2").addEventListener("click",function(){setStep("spells");});
-  $("btnLoad").addEventListener("click",function(){$("stepsMenu").classList.remove("open");loadViaPicker("fileLoad");});
   $("btnLoadStart").addEventListener("click",function(){loadViaPicker("fileLoadStart");});
-  $("btnPdf").addEventListener("click",function(){$("stepsMenu").classList.remove("open");exportPdf();});
-  $("fileLoad").addEventListener("change",function(e){if(e.target.files&&e.target.files[0]){charFileHandle=null;loadCharFile(e.target.files[0]);}e.target.value="";});
+  $("pdfBtn").addEventListener("click",function(){exportPdf();});
   $("fileLoadStart").addEventListener("change",function(e){if(e.target.files&&e.target.files[0]){charFileHandle=null;loadCharFile(e.target.files[0]);}e.target.value="";});
   $("abilityMethod").addEventListener("change",function(e){
     state.abilities.method=e.target.value;

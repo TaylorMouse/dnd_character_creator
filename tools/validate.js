@@ -837,7 +837,23 @@ check("  every directly bound id is in the markup",_absent.join(", ")||"none","n
 checkTrue("  a save button exists beside the theme toggle",!!_ids["saveBtn"]&&!!_ids["darkToggle"]);
 checkTrue("  the old menu entries are gone",!_ids["btnSave"]&&!_ids["btnSaveAs"]);
 checkTrue("  ...and nothing still refers to them",_app.indexOf('$("btnSave")')<0&&_app.indexOf('$("btnSaveAs")')<0);
-checkTrue("  loading is still reachable from the menu",!!_ids["btnLoad"]);
+checkTrue("  loading lives on the start page only",!!_ids["btnLoadStart"]&&!_ids["btnLoad"]);
+checkTrue("  PDF export sits beside save, not in the menu",!!_ids["pdfBtn"]&&!_ids["btnPdf"]);
+// the start page link leads the menu and matches the numbered steps
+var _menu=_html.substring(_html.indexOf('id="stepsMenu"'),_html.indexOf('id="stepsMenu"')+1400);
+checkTrue("  Start Page is the first menu entry",_menu.indexOf("Start Page")<_menu.indexOf("Class &amp; Features"));
+checkTrue("  ...styled like the numbered steps",/class="step" id="changeEdition"/.test(_menu));
+checkTrue("  ...and warns that it clears the character",/id="changeEdition"[^>]*this clears/.test(_menu));
+check("  the menu has no text action buttons left",(_html.match(/class="menu-action"/g)||[]).length,0);
+// icons are monochrome inline SVG, not emoji
+checkTrue("  icons are inline SVG in currentColor",_app.indexOf('stroke="currentColor"')>=0);
+var _emoji=["&#128190;","&#128196;","&#127769;","&#9733;","&#9734;"];
+var _left=[];
+for(var _e=0;_e<_emoji.length;_e++)if(_html.indexOf(_emoji[_e])>=0||_app.indexOf(_emoji[_e])>=0)_left.push(_emoji[_e]);
+check("  no coloured emoji left on the icon buttons",_left.join(", ")||"none","none");
+checkTrue("  the theme toggle swaps between two drawn icons",_app.indexOf("ICON.sun")>=0&&_app.indexOf("ICON.moon")>=0);
+checkTrue("  inspiration uses the same star",_app.indexOf("ICON.starOn")>=0);
+checkTrue("  the PDF button keeps its icon while building",_app.indexOf('classList.add("busy")')>=0&&_app.indexOf("btn.textContent")<0);
 checkTrue("  saving asks before it overwrites",_app.indexOf("Overwrite ")>=0&&_app.indexOf("confirm(msg)")>=0);
 checkTrue("  both pickers share a folder memory",(_app.match(/id:PICKER_ID/g)||[]).length===2);
 checkTrue("  ...and open where the character's file lives",(_app.match(/opts.startIn=hint/g)||[]).length===2);

@@ -120,11 +120,8 @@ textarea{resize:vertical}
 .hamburger{background:#fff;border:1px solid var(--line2);border-radius:8px;padding:6px 12px;font-size:20px;line-height:1;font-weight:800;color:var(--ink);cursor:pointer}
 .hamburger:hover{border-color:var(--accent)}
 .menu-sep{height:1px;background:var(--line);margin:8px 2px}
-.menu-action{display:block;width:100%;text-align:left;background:none;border:none;padding:8px 10px;border-radius:8px;font-size:13px;font-weight:700;color:var(--ink);cursor:pointer}
-.menu-action:hover{background:var(--head)}
 .steps{display:none;margin:0 0 18px}
 .steps.open{display:block;background:#fff;border:1px solid var(--line2);border-radius:12px;padding:8px;box-shadow:var(--shadow);max-width:340px}
-.step-change{display:block;width:100%;margin-top:6px;padding-top:10px;border-top:1px solid var(--line);background:none;border:none;color:var(--link);font-weight:700;cursor:pointer;text-align:left;font-size:13px}
 .step{width:100%;display:flex;align-items:center;justify-content:flex-start;gap:8px;background:#fff;border:1px solid var(--line2);border-radius:10px;padding:10px 12px;font-size:14px;font-weight:700;color:var(--muted);cursor:pointer;margin-bottom:6px}
 .step:hover{border-color:var(--accent)}
 .step .step-n{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:#eee;color:var(--muted);font-size:12px}
@@ -297,17 +294,21 @@ body.dark .inv-res-item .res-name-click:hover{background:#31302c}
 .sheet-toolbar .btn,.sheet-toolbar label.btn{font-size:13px;padding:9px 16px;cursor:pointer}
 /* the save and theme buttons sit together at the far right of the top bar */
 .top-actions{margin-left:auto;display:flex;gap:8px;align-items:center}
-.dark-toggle{background:#fff;border:1px solid var(--line2);border-radius:8px;padding:5px 10px;font-size:18px;line-height:1;cursor:pointer}
-.dark-toggle:hover{border-color:var(--accent)}
+.icon-btn{background:#fff;border:1px solid var(--line2);border-radius:8px;padding:6px 9px;line-height:0;cursor:pointer;color:var(--ink)}
+.icon-btn:hover{border-color:var(--accent)}
+.icon-btn[disabled]{cursor:default;opacity:.55}
+/* icons are monochrome: stroked in currentColor, never a colour of their own */
+.ico{width:18px;height:18px;display:block}
+/* while the PDF is being built the icon pulses rather than being replaced by text */
+.icon-btn.busy .ico{animation:icoPulse .9s ease-in-out infinite}
+@keyframes icoPulse{0%,100%{opacity:1}50%{opacity:.35}}
 
 /* dark mode — applied to the whole view while on the sheet */
 body.dark{background:#151515}
-body.dark .dark-toggle,body.dark .hamburger{background:#2a2a2a;border-color:#4a4a4a;color:#e8e8e8}
+body.dark .icon-btn,body.dark .hamburger{background:#2a2a2a;border-color:#4a4a4a;color:#e8e8e8}
 body.dark .steps.open{background:#262626;border-color:#4a4a4a}
 body.dark .step{background:#2a2a2a;border-color:#4a4a4a;color:#bbb}
 body.dark .step.active{color:#fff}
-body.dark .step-change,body.dark .menu-action{color:#e8e8e8}
-body.dark .menu-action:hover{background:#333}
 body.dark .foot{color:#888}
 body.dark #step-sheet{--panel:#262626;--ink:#e8e8e8;--muted:#9a9a9a;--line:#3a3a3a;--line2:#4a4a4a;--head:#2f2f2f;--accent:tomato;--accent2:tomato;--roll:#7fd18a;color:#e8e8e8}
 body.dark .tag-dmg{color:tomato}
@@ -374,7 +375,8 @@ body.dark .ac-edit{background:#262626;border-color:#4a4a4a}
 .rest-btns{display:flex;gap:8px;margin-bottom:10px}
 .rest-btns .btn{flex:1}
 .insp-box{cursor:pointer;user-select:none}
-.insp-box .tv{color:#b8860b}
+.insp-box .tv{display:flex;justify-content:center}
+.insp-box .ico{width:22px;height:22px}
 .death-row{display:flex;align-items:center;gap:8px;margin:4px 0}
 .death-lbl{font-size:12px;font-weight:700;width:74px}
 .death-dot{width:16px;height:16px;border-radius:50%;border:2px solid #b9b0a0;cursor:pointer}
