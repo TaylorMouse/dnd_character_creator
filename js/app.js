@@ -184,7 +184,10 @@
   }
 
   /* ---------- screens ---------- */
-  function showEdition(){$("screen-build").classList.add("hidden");$("screen-edition").classList.remove("hidden");}
+  function showEdition(){
+    $("screen-build").classList.add("hidden");$("screen-edition").classList.remove("hidden");
+    renderRecents();
+  }
   function setStep(step){
     $("step-class").classList.toggle("hidden",step!=="class");
     $("step-background").classList.toggle("hidden",step!=="background");
@@ -2660,6 +2663,140 @@
      When the browser supports the File System Access API we keep a handle to the file
      that was opened (or first saved to), so later saves overwrite it in place instead of
      dropping another copy in Downloads. "Save as..." always asks for a location. */
+  /* ---------- recent characters ----------
+     A handle from the file picker survives being stored in IndexedDB, so the opening
+     screen can list the characters actually worked on and reopen one in a click. The
+     browser still gates the file itself, which is why opening a recent asks permission
+     once per session; granting it also restores Save-in-place for that file.
+     Only handles are kept, never a copy of the character, so what opens is always what
+     is on disk. Without the File System Access API the list stays hidden. */
+  var RC_DB="cc-recents",RC_STORE="chars",RC_MAX=8;
+  function rcOpen(){
+    return new Promise(function(res,rej){
+      if(!window.indexedDB){rej(new Error("no IndexedDB"));return;}
+      var rq=indexedDB.open(RC_DB,1);
+      rq.onupgradeneeded=function(){
+        var db=rq.result;
+        if(!db.objectStoreNames.contains(RC_STORE))db.createObjectStore(RC_STORE,{keyPath:"id",autoIncrement:true});
+      };
+      rq.onsuccess=function(){res(rq.result);};
+      rq.onerror=function(){rej(rq.error);};
+    });
+  }
+  function rcAll(){
+    return rcOpen().then(function(db){return new Promise(function(res,rej){
+      var rq=db.transaction(RC_STORE,"readonly").objectStore(RC_STORE).getAll();
+      rq.onsuccess=function(){res(rq.result||[]);};
+      rq.onerror=function(){rej(rq.error);};
+    });});
+  }
+  function rcPut(rec){
+    return rcOpen().then(function(db){return new Promise(function(res,rej){
+      var tx=db.transaction(RC_STORE,"readwrite"),rq=tx.objectStore(RC_STORE).put(rec);
+      rq.onsuccess=function(){res(rq.result);};
+      tx.onerror=function(){rej(tx.error);};
+    });});
+  }
+  function rcDel(ids){
+    if(!ids||!ids.length)return Promise.resolve();
+    return rcOpen().then(function(db){return new Promise(function(res,rej){
+      var tx=db.transaction(RC_STORE,"readwrite"),st=tx.objectStore(RC_STORE);
+      ids.forEach(function(id){st["delete"](id);});
+      tx.oncomplete=function(){res();};
+      tx.onerror=function(){rej(tx.error);};
+    });});
+  }
+  // Remember the file that is open, replacing any earlier entry for that same file.
+  function rcRemember(handle){
+    if(!handle||!canFilePicker()||!window.indexedDB||!window.Promise)return;
+    var rec={handle:handle,file:handle.name,name:state.name||"Unnamed",
+             cls:state.className||"",level:state.level,sub:state.subclassName||"",
+             edition:state.edition,portrait:state.portrait||null,when:(new Date()).getTime()};
+    return rcAll().then(function(list){
+      var same=list.map(function(r){
+        if(r.handle&&r.handle.isSameEntry)return r.handle.isSameEntry(handle)["catch"](function(){return false;});
+        return Promise.resolve(r.file===rec.file);
+      });
+      return Promise.all(same).then(function(flags){
+        var drop=[];
+        list.forEach(function(r,i){if(flags[i])drop.push(r.id);});
+        var keep=list.filter(function(r){return drop.indexOf(r.id)<0;});
+        keep.sort(function(a,b){return b.when-a.when;});
+        keep.slice(RC_MAX-1).forEach(function(r){drop.push(r.id);});   // trim the oldest
+        return rcDel(drop).then(function(){return rcPut(rec);});
+      });
+    })["catch"](function(){});      // a convenience must never break a save
+  }
+  function rcWhen(ms){
+    var mins=Math.round(((new Date()).getTime()-ms)/60000);
+    if(mins<1)return "just now";
+    if(mins<60)return mins+(mins===1?" minute ago":" minutes ago");
+    var hrs=Math.round(mins/60);
+    if(hrs<24)return hrs+(hrs===1?" hour ago":" hours ago");
+    var days=Math.round(hrs/24);
+    if(days<30)return days+(days===1?" day ago":" days ago");
+    return (new Date(ms)).toLocaleDateString();
+  }
+  function rcCardHtml(r){
+    var art=r.portrait?'<img src="'+esc(r.portrait)+'" alt="">':'<span class="rc-die">&#9670;</span>';
+    var bits=[];
+    if(r.cls)bits.push("Level "+r.level+" "+r.cls);
+    if(r.sub)bits.push(r.sub);
+    var why=r.file+"  ·  "+editionLabel(r.edition)+"  ·  opened "+rcWhen(r.when);
+    return '<div class="rc" data-id="'+r.id+'" title="'+esc(why)+'" role="button" tabindex="0">'+
+      '<span class="rc-art">'+art+'</span>'+
+      '<span class="rc-txt"><span class="rc-name">'+esc(r.name)+'</span>'+
+      '<span class="rc-sub">'+esc(bits.join("  ·  ")||r.file)+'</span>'+
+      '<span class="rc-ago">'+esc(rcWhen(r.when))+'</span></span>'+
+      '<span class="rc-x" data-x="'+r.id+'" title="Forget this character (the file itself is not deleted)">&times;</span>'+
+      "</div>";
+  }
+  function renderRecents(){
+    var wrap=$("recentWrap"),host=$("recentList");
+    if(!wrap||!host)return;
+    function hide(){wrap.classList.add("hidden");}
+    if(!canFilePicker()||!window.indexedDB||!window.Promise){hide();return;}
+    rcAll().then(function(list){
+      list.sort(function(a,b){return b.when-a.when;});
+      if(!list.length){hide();return;}
+      host.innerHTML=list.map(rcCardHtml).join("");
+      wrap.classList.remove("hidden");
+      Array.prototype.forEach.call(host.querySelectorAll(".rc"),function(el){
+        function go(){openRecent(+el.getAttribute("data-id"));}
+        el.addEventListener("click",go);
+        el.addEventListener("keydown",function(e){if(e.keyCode===13||e.keyCode===32){e.preventDefault();go();}});
+      });
+      Array.prototype.forEach.call(host.querySelectorAll(".rc-x"),function(x){
+        x.addEventListener("click",function(e){
+          e.stopPropagation();                       // forgetting must not also open it
+          rcDel([+x.getAttribute("data-x")]).then(renderRecents);
+        });
+      });
+    })["catch"](hide);
+  }
+  function openRecent(id){
+    rcAll().then(function(list){
+      var r=null;
+      list.forEach(function(x){if(x.id===id)r=x;});
+      if(!r||!r.handle)return;
+      return grantWrite(r.handle).then(function(ok){
+        // read access is enough to open it; without write access Save asks for a location
+        if(!ok)toast("Opened read-only — Save will ask where to put it");
+        return r.handle.getFile().then(function(f){
+          charFileHandle=ok?r.handle:null;
+          loadCharFile(f);
+          r.when=(new Date()).getTime();
+          return rcPut(r);
+        });
+      })["catch"](function(e){
+        var gone=e&&(e.name==="NotFoundError"||e.name==="NotReadableError");
+        if(gone){
+          rcDel([r.id]).then(renderRecents);
+          toast(r.file+" is no longer there — removed from the list");
+        }else toast("Could not open "+r.file);
+      });
+    })["catch"](function(){});
+  }
   var charFileHandle=null;
   function canFilePicker(){return !!(window.showOpenFilePicker&&window.showSaveFilePicker);}
   function charFileName(){return (state.name||"character").replace(/[^\w \-]/g,"")+".json";}
@@ -2679,7 +2816,7 @@
   function pickAndSave(json){
     return window.showSaveFilePicker({suggestedName:charFileName(),
       types:[{description:"Character file",accept:{"application/json":[".json"]}}]})
-      .then(function(h){charFileHandle=h;return writeHandle(h,json).then(function(){toast("Saved to "+h.name);});})
+      .then(function(h){charFileHandle=h;return writeHandle(h,json).then(function(){toast("Saved to "+h.name);rcRemember(h);});})
       ["catch"](function(e){
         if(e&&e.name==="AbortError")return;
         downloadBlob(json,charFileName(),"application/json");toast("Saved to your downloads");
@@ -2692,7 +2829,7 @@
     if(charFileHandle&&!saveAs){
       grantWrite(charFileHandle).then(function(ok){
         if(!ok)return pickAndSave(json);
-        return writeHandle(charFileHandle,json).then(function(){toast("Saved to "+charFileHandle.name);});
+        return writeHandle(charFileHandle,json).then(function(){toast("Saved to "+charFileHandle.name);rcRemember(charFileHandle);});
       })["catch"](function(){return pickAndSave(json);});
       return;
     }
@@ -2725,6 +2862,7 @@
     $("featTitle").textContent=state.className?state.className+" Features":"Class Features";
     if(state.slug)loadFeatureData(state.slug,function(fd){state.fdata=fd;showBuild("sheet");});
     else showBuild("class");
+    rcRemember(charFileHandle);        // a no-op when the file came through the plain input
   }
   function loadCharFile(file){   // note: charFileHandle is set by loadViaPicker when available
     var rd=new FileReader();

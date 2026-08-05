@@ -46,6 +46,31 @@ body.dark .src-hb{color:#d5ab5e}
 .ed-card .nm{font-size:16px;font-weight:700;margin:6px 0 4px}
 .ed-card .ds{font-size:13px;color:var(--muted)}
 .edition-load{text-align:center;margin-top:26px;display:flex;gap:12px;align-items:center;justify-content:center;flex-wrap:wrap}
+
+/* ---------- recent characters on the opening screen ---------- */
+.recent-wrap{margin-top:26px}
+.recent-h{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:9px}
+.recent-list{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:560px){.recent-list{grid-template-columns:1fr}}
+.rc{position:relative;display:flex;align-items:center;gap:11px;padding:10px 34px 10px 11px;
+  background:var(--panel);border:1px solid var(--line);border-radius:10px;cursor:pointer;
+  box-shadow:var(--shadow);transition:border-color .15s,transform .05s}
+.rc:hover{border-color:var(--accent)}
+.rc:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--focus)}
+.rc:active{transform:translateY(1px)}
+.rc-art{flex:0 0 auto;width:44px;height:44px;border-radius:8px;overflow:hidden;background:var(--head);
+  display:flex;align-items:center;justify-content:center}
+.rc-art img{width:100%;height:100%;object-fit:cover;display:block}
+.rc-die{color:var(--accent);font-size:19px;line-height:1}
+.rc-txt{min-width:0;display:flex;flex-direction:column}
+.rc-name{font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rc-sub{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rc-ago{font-size:11px;color:var(--muted);opacity:.8}
+.rc-x{position:absolute;top:6px;right:8px;width:18px;height:18px;line-height:17px;text-align:center;
+  border-radius:50%;color:var(--muted);font-size:15px;opacity:0;transition:opacity .12s}
+.rc:hover .rc-x,.rc:focus .rc-x{opacity:1}
+.rc-x:hover{background:var(--accent);color:#fff}
+.recent-note{margin-top:8px;font-size:11px;color:var(--muted)}
 .edition-load span{color:var(--muted);font-size:14px}
 
 /* builder */

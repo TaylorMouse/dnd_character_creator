@@ -56,7 +56,8 @@ app=app.replace("populateLevels();showEdition();",
  "featuresAndTraits:featuresAndTraits,condNotesFor:condNotesFor,officialLanguages:officialLanguages,languagesAll:languagesAll,mergedLanguages:mergedLanguages,"+
  "expandFeatureRefs:expandFeatureRefs,featureAttacks:featureAttacks,actionsCardHtml:actionsCardHtml,"+
  "fxAvailable:fxAvailable,fxActive:fxActive,fxTotals:fxTotals,fxDmgFor:fxDmgFor,concOptions:concOptions,acBreakdown:acBreakdown,"+
- "srcAbbr:srcAbbr,sourceName:sourceName,isHomebrew:isHomebrew,itemAllowed:itemAllowed,defences:defences,expertiseSkills:expertiseSkills,skillBonus:skillBonus,passiveScore:passiveScore,"+
+ "srcAbbr:srcAbbr,sourceName:sourceName,isHomebrew:isHomebrew,itemAllowed:itemAllowed,"+
+ "rcCardHtml:rcCardHtml,rcWhen:rcWhen,defences:defences,expertiseSkills:expertiseSkills,skillBonus:skillBonus,passiveScore:passiveScore,"+
  "itemMechanics:itemMechanics,skillAdvantage:skillAdvantage};");
 eval(app);
 var C=window.__cc,S=C.state;
@@ -778,6 +779,43 @@ if(!hbCodes.length){
     checkTrue("  ...with its features listed",html.indexOf(found.sub.features[0].name)>=0);
   }
 }
+
+
+// =====================================================================
+section("7q. Recent characters list");
+// The IndexedDB and permission plumbing needs a real browser; what is checkable here is
+// the time wording and the card markup built from one stored record.
+var NOW=(new Date()).getTime(),MIN=60000,HOUR=60*MIN,DAY=24*HOUR;
+check("  seconds ago reads 'just now'",C.rcWhen(NOW-5000),"just now");
+check("  one minute is singular",C.rcWhen(NOW-MIN),"1 minute ago");
+check("  ...and several are plural",C.rcWhen(NOW-40*MIN),"40 minutes ago");
+check("  one hour is singular",C.rcWhen(NOW-HOUR),"1 hour ago");
+check("  ...and several are plural",C.rcWhen(NOW-5*HOUR),"5 hours ago");
+check("  one day is singular",C.rcWhen(NOW-DAY),"1 day ago");
+check("  ...and several are plural",C.rcWhen(NOW-9*DAY),"9 days ago");
+checkTrue("  beyond a month it falls back to a date",C.rcWhen(NOW-200*DAY).indexOf("ago")<0);
+// a card carries everything needed to recognise and open the character
+var rec={id:7,file:"Tedlen Teddy Bearborne.json",name:"Tedlen",cls:"Barbarian",level:5,
+         sub:"Path of the Beast",edition:"classic",portrait:null,when:NOW-2*HOUR};
+var card=C.rcCardHtml(rec);
+checkTrue("  the card carries its record id",card.indexOf('data-id="7"')>=0);
+checkTrue("  the name is shown",card.indexOf(">Tedlen<")>=0);
+checkTrue("  with level, class and subclass",card.indexOf("Level 5 Barbarian")>=0&&card.indexOf("Path of the Beast")>=0);
+checkTrue("  and when it was last opened",card.indexOf("2 hours ago")>=0);
+checkTrue("  the file name and edition are on hover",card.indexOf("Tedlen Teddy Bearborne.json")>=0&&card.indexOf("2014 Core Rules")>=0);
+checkTrue("  it is reachable by keyboard",card.indexOf('tabindex="0"')>=0&&card.indexOf('role="button"')>=0);
+checkTrue("  a forget control is present",card.indexOf('data-x="7"')>=0);
+checkTrue("  ...which says the file is not deleted",card.indexOf("not deleted")>=0);
+checkTrue("  with no portrait it falls back to a die",card.indexOf("rc-die")>=0);
+// a portrait is used when the character has one
+var withArt=C.rcCardHtml({id:8,file:"a.json",name:"Erenar",cls:"Sorcerer",level:3,sub:"",
+                          edition:"one",portrait:"data:image/png;base64,AAA",when:NOW});
+checkTrue("  a portrait becomes the thumbnail",withArt.indexOf("<img src=")>=0&&withArt.indexOf("rc-die")<0);
+checkTrue("  a character with no subclass still reads correctly",withArt.indexOf("Level 3 Sorcerer")>=0);
+// nothing unescaped reaches the markup
+var nasty=C.rcCardHtml({id:9,file:'x".json',name:'<script>bad</script>',cls:"",level:1,sub:"",
+                        edition:"classic",portrait:null,when:NOW});
+checkTrue("  a hostile name is escaped",nasty.indexOf("<script>")<0);
 
 // =====================================================================
 section("8. Data integrity");
