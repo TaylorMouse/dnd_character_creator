@@ -56,7 +56,7 @@ app=app.replace("populateLevels();showEdition();",
  "featuresAndTraits:featuresAndTraits,condNotesFor:condNotesFor,officialLanguages:officialLanguages,languagesAll:languagesAll,mergedLanguages:mergedLanguages,"+
  "expandFeatureRefs:expandFeatureRefs,featureAttacks:featureAttacks,actionsCardHtml:actionsCardHtml,"+
  "fxAvailable:fxAvailable,fxActive:fxActive,fxTotals:fxTotals,fxDmgFor:fxDmgFor,concOptions:concOptions,acBreakdown:acBreakdown,"+
- "martialArtsDie:martialArtsDie,isMonkWeapon:isMonkWeapon,biggerDie:biggerDie,actionsCardHtml:actionsCardHtml,"+
+ "martialArtsDie:martialArtsDie,isMonkWeapon:isMonkWeapon,biggerDie:biggerDie,actionsCardHtml:actionsCardHtml,classOptions:classOptions,"+
  "profBlock:profBlock,profOpts:profOpts,customProfs:customProfs,"+
  "srcAbbr:srcAbbr,sourceName:sourceName,isHomebrew:isHomebrew,itemAllowed:itemAllowed,"+
  "rcCardHtml:rcCardHtml,rcWhen:rcWhen,defences:defences,expertiseSkills:expertiseSkills,skillBonus:skillBonus,passiveScore:passiveScore,"+
@@ -1010,6 +1010,41 @@ checkTrue("  ...with the rider's full text to expand",card.indexOf("extra necrot
 // a class with no such riders shows no section
 setup("wizard-classic","Wizard",5);
 check("  a Wizard has no attack-option riders",C.actionEconomy().attack.length,0);
+
+// =====================================================================
+section("7w. Metamagic / class options gathered into their own card");
+function coOf(slug,name,lv,sub,setC){setup(slug,name,lv);S.subclassName=sub;if(setC)setC();return C.classOptions();}
+function coNames(co){return co.items.map(function(x){return x.name;});}
+function coTitle(co){return co.pools.length===1?co.pools[0]:(co.pools.length?"Class Options":"(none)");}
+// the Sorcerer this was reported for: three metamagic picks + Magical Guidance
+var er=coOf("sorcerer-classic","Sorcerer",6,"Storm Sorcery",function(){
+  S.choices["Metamagic:0"]="Quickened Spell";S.choices["Metamagic:1"]="Twinned Spell";
+  S.choices["Metamagic Options:0"]="Seeking Spell";});
+check("  the card is titled Metamagic",coTitle(er),"Metamagic");
+checkTrue("  Quickened Spell is listed",coNames(er).indexOf("Quickened Spell")>=0);
+checkTrue("  Twinned Spell is listed",coNames(er).indexOf("Twinned Spell")>=0);
+checkTrue("  Seeking Spell (from the Tasha's pool) is listed",coNames(er).indexOf("Seeking Spell")>=0);
+checkTrue("  Magical Guidance is included (an optional feature that spends sorcery points)",coNames(er).indexOf("Magical Guidance")>=0);
+checkTrue("  each option carries its rules text to expand",er.items.filter(function(x){return x.entries&&x.entries.length;}).length===er.items.length);
+// a spent-resource optional feature only shows once the character has it
+var er3=coOf("sorcerer-classic","Sorcerer",3,"Storm Sorcery",function(){S.choices["Metamagic:0"]="Careful Spell";});
+checkTrue("  no Magical Guidance before level 5",coNames(er3).indexOf("Magical Guidance")<0);
+// the pattern generalises to other pools, titled by the pool
+var wl=coOf("warlock-classic","Warlock",5,"The Fiend",function(){S.choices["Eldritch Invocations:0"]="Agonizing Blast";});
+check("  a Warlock's card is titled Eldritch Invocations",coTitle(wl),"Eldritch Invocations");
+checkTrue("  ...listing the chosen invocation",coNames(wl).indexOf("Agonizing Blast")>=0);
+var bm=coOf("fighter-classic","Fighter",7,"Battle Master",function(){S.choices["Maneuvers:0"]="Trip Attack";});
+check("  a Battle Master's card is titled Maneuvers (a subclass pool)",coTitle(bm),"Maneuvers");
+checkTrue("  ...listing the chosen maneuver",coNames(bm).indexOf("Trip Attack")>=0);
+// a class with no such options gets no card
+var wz=coOf("wizard-classic","Wizard",5,"Evocation");
+check("  a Wizard has no class-options card",wz.items.length,0);
+// the sheet renders the card with the metamagic on it
+setup("sorcerer-classic","Sorcerer",6);S.subclassName="Storm Sorcery";
+S.choices["Metamagic:0"]="Quickened Spell";S.choices["Metamagic:1"]="Twinned Spell";
+C.render();
+var h=_els["sheetPanel"].innerHTML;
+checkTrue("  the Metamagic card appears on the sheet",h.indexOf(">Metamagic<")>=0&&h.indexOf("Quickened Spell")>=0);
 
 // =====================================================================
 section("8. Data integrity");

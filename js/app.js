@@ -2004,6 +2004,40 @@
   // Optional class features (Tasha's) are opt-in; they default to enabled.
   function optKey(f){return "optOff:"+f.name+"@"+f.level;}
   function optEnabled(f){return !f.optional||state.choices[optKey(f)]!=="1";}
+  /* The in-play options a player picks and then reaches for every turn: Metamagic for a
+     Sorcerer, Invocations for a Warlock, Maneuvers for a Battle Master. They come from the
+     "choose from a pool" features, plus any optional feature that spends the class's own
+     resource (a Sorcerer's Magical Guidance), so they can sit in one card of their own
+     instead of being hunted for in Features & Traits. */
+  function classOptions(){
+    var fd=state.fdata;if(!fd)return {items:[],pools:[]};
+    var lists=fd.optionLists||{},out=[],seen={},pools=[],i;
+    // Read each option pool by its choices. A choice only exists once the player has made
+    // it at the right level, so this catches pools on the class or the subclass alike.
+    for(var poolName in lists){
+      var got=0;
+      for(i=0;i<20;i++){
+        var v=state.choices[poolName+":"+i];
+        if(!v||seen["p"+v])continue;seen["p"+v]=1;got++;
+        var opt=lists[poolName].filter(function(x){return x.name===v;})[0];
+        out.push({name:v,entries:(opt&&opt.entries)||[],origin:poolName});
+      }
+      var disp=poolName.replace(/\s+Options$/,"");       // merge "Metamagic Options" into "Metamagic"
+      if(got&&pools.indexOf(disp)<0)pools.push(disp);    // only name a pool the player drew from
+    }
+    // an optional feature that spends the class resource, e.g. Magical Guidance (sorcery points)
+    var res=(window.CC_RESOURCES&&window.CC_RESOURCES[state.slug])||[];
+    var words=res.map(function(r){return r.name.toLowerCase().replace(/s$/,"");});
+    (fd.classFeatures||[]).forEach(function(f){
+      if(f.level>state.level||!f.optional||!optEnabled(f)||lists[f.name]||seen["f"+f.name])return;
+      var txt=entryText(f.entries||"").toLowerCase();
+      var spends=/\b(?:spend|expend)/.test(txt)&&words.some(function(w){return w&&txt.indexOf(w)>=0;});
+      if(!spends)return;
+      seen["f"+f.name]=1;
+      out.push({name:f.name,entries:f.entries||[],origin:state.className+" feature, level "+f.level});
+    });
+    return {items:out,pools:pools};
+  }
   // Every feature/trait the character actually has: race + lineage + class + chosen
   // subclass (up to the current level), with nested feature references expanded.
   function featuresAndTraits(){
@@ -2521,6 +2555,10 @@
       var rbox=fk?'<span class="fx-box'+(fxIsOn(fk)?" on":"")+'" data-fx-set="'+esc(fk)+'" title="'+esc(fxIsOn(fk)?"Active — click to end":"Click when you use this")+'"></span>':"";
       return '<div style="margin-bottom:10px"><div class="res-name">'+rbox+esc(r.name)+' <span class="res-sub">('+n+')</span></div><div class="pips">'+pips+"</div></div>";}).join("");
     var cRes=shCard("Class Resources",resBody);
+    // Metamagic / Invocations / Maneuvers — the options a caster or martial applies in play
+    var co=classOptions();
+    var coTitle=co.pools.length===1?co.pools[0]:"Class Options";
+    var cOpts=co.items.length?shCard(coTitle,sheetCollapse(co.items,"co")):"";
     // actions (weapon attacks, attack cantrips, unarmed, actions in combat)
     var inv=state.equipment.inventory;
     var cAtk=shCard("Actions",actionsCardHtml());
@@ -2653,7 +2691,7 @@
     host.className=frameCls;
     // fifth column: Rest and Death Saves share a row, Features & Traits and Background
     // then run the full width beneath them
-    host.innerHTML=html+'<div class="sheet-grid"><div>'+left+"</div><div>"+mid+"</div><div>"+cRes+cSlots+cSpells+"</div><div>"+cAtk+cCur+cInv+'</div><div class="col5"><div class="col5-pair">'+cRest+cDeath+"</div>"+cFeat+cBg+"</div></div>";
+    host.innerHTML=html+'<div class="sheet-grid"><div>'+left+"</div><div>"+mid+"</div><div>"+cRes+cOpts+cSlots+cSpells+"</div><div>"+cAtk+cCur+cInv+'</div><div class="col5"><div class="col5-pair">'+cRest+cDeath+"</div>"+cFeat+cBg+"</div></div>";
     var spx=host.querySelector("#sheetPortrait");if(spx)spx.addEventListener("click",function(){$("portraitFile").click();});
     var hc=host.querySelector("#hpCur");if(hc)hc.addEventListener("input",function(){state.sheet.hpEdited=true;state.sheet.hpCurrent=parseInt(hc.value,10)||0;});
     var ht=host.querySelector("#hpTemp");if(ht)ht.addEventListener("input",function(){state.sheet.hpTemp=ht.value;});
