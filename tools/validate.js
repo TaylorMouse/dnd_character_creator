@@ -37,7 +37,7 @@ var ROOT=fso.GetParentFolderName(fso.GetParentFolderName(WScript.ScriptFullName)
 
 // ---------- load data + app ----------
 var dataFiles=["data-classes.js","data-feats.js","data-backgrounds.js","data-races.js",
-               "data-items.js","data-sources.js","data-starting.js","data-spells.js","data-spellcasting.js","data-resources.js","data-speed.js","data-condmods.js","data-languages.js"];
+               "data-items.js","data-sources.js","data-proficiencies.js","data-starting.js","data-spells.js","data-spellcasting.js","data-resources.js","data-speed.js","data-condmods.js","data-languages.js"];
 for(var i=0;i<dataFiles.length;i++) eval(readFile(ROOT+"resources\\"+dataFiles[i]));
 // every generated per-class feature file
 var featDir=fso.GetFolder(ROOT+"resources\\features"),fe=new Enumerator(featDir.Files);
@@ -57,6 +57,7 @@ app=app.replace("populateLevels();showEdition();",
  "expandFeatureRefs:expandFeatureRefs,featureAttacks:featureAttacks,actionsCardHtml:actionsCardHtml,"+
  "fxAvailable:fxAvailable,fxActive:fxActive,fxTotals:fxTotals,fxDmgFor:fxDmgFor,concOptions:concOptions,acBreakdown:acBreakdown,"+
  "martialArtsDie:martialArtsDie,isMonkWeapon:isMonkWeapon,biggerDie:biggerDie,actionsCardHtml:actionsCardHtml,"+
+ "profBlock:profBlock,profOpts:profOpts,customProfs:customProfs,"+
  "srcAbbr:srcAbbr,sourceName:sourceName,isHomebrew:isHomebrew,itemAllowed:itemAllowed,"+
  "rcCardHtml:rcCardHtml,rcWhen:rcWhen,defences:defences,expertiseSkills:expertiseSkills,skillBonus:skillBonus,passiveScore:passiveScore,"+
  "itemMechanics:itemMechanics,skillAdvantage:skillAdvantage};");
@@ -944,6 +945,39 @@ setup("rogue-classic","Rogue",5);
 S.abilities.base={Strength:10,Dexterity:16,Constitution:14,Intelligence:10,Wisdom:10,Charisma:8};
 S.equipment.inventory=[{name:"Rapier",source:"PHB",cat:"Weapon",weaponCat:"martial",wtype:"M",dmg:"1d8",dmgType:"P",props:["Finesse"],qty:1,equipped:true}];
 checkTrue("  a Rogue's finesse Rapier uses Dex (1d8+3)",weapRow("Rapier").indexOf("1d8+3 piercing")>=0);
+
+// =====================================================================
+section("7u. Added proficiencies (armor / weapons / tools) from dropdowns");
+var PO=window.CC_PROF_OPTS;
+checkTrue("  the options data file is loaded",!!PO);
+check("  armor lists the four categories",(PO.armor||[]).join(","),"Light armor,Medium armor,Heavy armor,Shields");
+checkTrue("  weapons are grouped simple / martial",!!(PO.weapons&&PO.weapons["Simple weapons"]&&PO.weapons["Martial weapons"]));
+checkTrue("  ...and offer the category proficiencies too",PO.weapons.Categories.join(",").indexOf("Simple weapons")>=0);
+checkTrue("  tools are grouped as artisan / gaming / instrument / other",!!(PO.tools&&PO.tools["Artisan's Tools"]&&PO.tools["Gaming Sets"]&&PO.tools["Musical Instruments"]&&PO.tools["Other Tools"]));
+checkTrue("  Thieves' Tools is in the list",(PO.tools["Other Tools"]||[]).join(",").indexOf("Thieves' Tools")>=0);
+setup("fighter-classic","Fighter",5);
+S.customProficiencies={armor:[],weapons:[],tools:[]};
+// the dropdown lists options, and an added one drops out of it
+checkTrue("  the weapons dropdown offers Longbow",C.profOpts("weapons").indexOf(">Longbow<")>=0);
+S.customProficiencies.weapons.push("Longbow");
+checkTrue("  ...and stops offering it once added",C.profOpts("weapons").indexOf(">Longbow<")<0);
+var blk=C.profBlock("Weapons","weapons",S.fdata.proficiencies.weapons);
+checkTrue("  the block shows the added proficiency as a removable chip",blk.indexOf("Longbow")>=0&&blk.indexOf("prof-x")>=0);
+checkTrue("  ...alongside the granted proficiencies",blk.toLowerCase().indexOf("martial")>=0);
+check("  customProfs reports the addition",C.customProfs("weapons").join(","),"Longbow");
+// each block is independent
+S.customProficiencies.armor.push("Heavy armor");
+S.customProficiencies.tools.push("Thieves' Tools");
+checkTrue("  armor tracks its own additions",C.profBlock("Armor","armor","Light armor").indexOf("Heavy armor")>=0);
+checkTrue("  tools track theirs",C.profBlock("Tools","tools","None").indexOf("Thieves' Tools")>=0);
+checkTrue("  the armor dropdown no longer offers Heavy armor",C.profOpts("armor").indexOf(">Heavy armor<")<0);
+// the whole sheet still renders with additions present
+C.render();
+checkTrue("  the sheet renders with added proficiencies",_els["sheetPanel"].innerHTML.indexOf("Sheet error")<0);
+// persistence: the additions are saved and reloaded with the character
+checkTrue("  customProficiencies is in the save keys",app.indexOf('"customProficiencies"')>=0);
+checkTrue("  ...and older saves are migrated on load",app.indexOf('if(!state.customProficiencies)state.customProficiencies=')>=0);
+checkTrue("  the PDF export folds them in after the granted ones",app.indexOf('function profLine(txt,key)')>=0);
 
 // =====================================================================
 section("8. Data integrity");

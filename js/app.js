@@ -9,7 +9,8 @@
             race:null,raceLineage:null,raceChoices:{},
             abilities:{method:"pointbuy",base:{Strength:8,Dexterity:8,Constitution:8,Intelligence:8,Wisdom:8,Charisma:8},assign:{},other:{},override:{},rolled:null},
             equipment:freshEquipment(),
-            spells:{cantrips:[],spells:[],levelFilter:"",q:""},customLanguages:[],portrait:null,
+            spells:{cantrips:[],spells:[],levelFilter:"",q:""},customLanguages:[],
+            customProficiencies:{armor:[],weapons:[],tools:[]},portrait:null,
             sheet:freshSheet()};
   }
   var state=freshCharacter();
@@ -728,6 +729,39 @@
     STD_LANGS.forEach(function(x){out.push({name:x,type:"standard",core:true});});
     EXOTIC_LANGS.forEach(function(x){out.push({name:x,type:"exotic",core:true});});
     return out;
+  }
+  /* ---------- added proficiencies ----------
+     Extra armor, weapon or tool proficiencies a player picks up from a feat, feature or a
+     DM's leave, chosen from the official lists like the languages are and saved with the
+     character. Stored under state.customProficiencies[armor|weapons|tools]. */
+  function customProfs(key){return (state.customProficiencies&&state.customProficiencies[key])||[];}
+  function profChips(key){
+    return customProfs(key).map(function(v,i){
+      return '<span class="lang-chip">'+esc(v)+' <span class="prof-x" data-pk="'+esc(key)+'" data-i="'+i+'">&times;</span></span>';
+    }).join("");
+  }
+  // the dropdown, with anything already added filtered out
+  function profOpts(key){
+    var opts=window.CC_PROF_OPTS||{},have={};
+    customProfs(key).forEach(function(v){have[String(v).toLowerCase()]=1;});
+    function optsFor(list){
+      return list.filter(function(v){return !have[v.toLowerCase()];})
+                 .map(function(v){return '<option>'+esc(v)+"</option>";}).join("");
+    }
+    var html='<option value="">— Add a proficiency —</option>';
+    if(key==="armor"){html+=optsFor(opts.armor||[]);return html;}
+    var groups=opts[key]||{};
+    for(var g in groups){
+      var inner=optsFor(groups[g]||[]);
+      if(inner)html+='<optgroup label="'+esc(g)+'">'+inner+"</optgroup>";
+    }
+    return html;
+  }
+  function profBlock(label,key,granted){
+    return '<div class="prof-blk"><div class="pl">'+label+'</div>'+renderTags(granted||"None")+
+      '<div class="prof-edit">'+profChips(key)+
+        '<select class="prof-pick" data-pk="'+esc(key)+'">'+profOpts(key)+'</select>'+
+      "</div></div>";
   }
   // languages, alphabetical, tagged with type; value stays the bare name
   function langPool(){
@@ -2442,7 +2476,7 @@
         return '<option value="'+esc(x.name)+'">'+esc(x.name)+"</option>";
       }).join("")+"</optgroup>";
     });
-    var profBody='<div class="prof-blk"><div class="pl">Armor</div>'+renderTags(pf.armor||"None")+'</div><div class="prof-blk"><div class="pl">Weapons</div>'+renderTags(pf.weapons||"None")+'</div><div class="prof-blk"><div class="pl">Tools</div>'+renderTags(pf.tools||"None")+'</div>'+
+    var profBody=profBlock("Armor","armor",pf.armor)+profBlock("Weapons","weapons",pf.weapons)+profBlock("Tools","tools",pf.tools)+
       '<div class="prof-blk"><div class="pl">Languages</div>'+esc(langs.join(", ")||"—")+
       '<div class="lang-edit">'+langChips+
         '<select id="langPick">'+langOpts+'</select>'+
@@ -2664,6 +2698,20 @@
     if(al)al.addEventListener("click",addLang);
     if(cl)cl.addEventListener("keydown",function(e){if(e.keyCode===13){e.preventDefault();addLang();}});
     Array.prototype.forEach.call(host.querySelectorAll(".lang-x"),function(x){x.addEventListener("click",function(){state.customLanguages.splice(+x.getAttribute("data-i"),1);render();});});
+    // added proficiencies (armor / weapons / tools)
+    if(!state.customProficiencies)state.customProficiencies={armor:[],weapons:[],tools:[]};
+    Array.prototype.forEach.call(host.querySelectorAll(".prof-pick"),function(sel){
+      sel.addEventListener("change",function(){
+        var k=sel.getAttribute("data-pk");if(!sel.value)return;
+        (state.customProficiencies[k]=state.customProficiencies[k]||[]).push(sel.value);render();
+      });
+    });
+    Array.prototype.forEach.call(host.querySelectorAll(".prof-x"),function(x){
+      x.addEventListener("click",function(){
+        var k=x.getAttribute("data-pk"),arr=state.customProficiencies[k]||[];
+        arr.splice(+x.getAttribute("data-i"),1);render();
+      });
+    });
     // currency
     Array.prototype.forEach.call(host.querySelectorAll(".sh-cur"),function(inp){inp.addEventListener("input",function(){state.equipment.currency[inp.getAttribute("data-k")]=parseInt(inp.value,10)||0;var g=host.querySelector("#shGp");if(g)g.innerHTML=Math.round(currencyGP()*100)/100;});});
     // inventory add / custom / controls
@@ -2691,7 +2739,7 @@
   }
 
   /* ---------- save / load / export ---------- */
-  var SAVE_KEYS=["edition","name","className","source","slug","hdFaces","level","manualHp","subclassName","choices","background","bgIsCustom","bgCustomName","bgCustomDesc","bgChoices","details","race","raceLineage","raceChoices","abilities","equipment","spells","customLanguages","portrait","sheet"];
+  var SAVE_KEYS=["edition","name","className","source","slug","hdFaces","level","manualHp","subclassName","choices","background","bgIsCustom","bgCustomName","bgCustomDesc","bgChoices","details","race","raceLineage","raceChoices","abilities","equipment","spells","customLanguages","customProficiencies","portrait","sheet"];
   function processPortrait(file){
     var rd=new FileReader();
     rd.onload=function(){
@@ -2942,6 +2990,8 @@
     SAVE_KEYS.forEach(function(k){if(o[k]!==undefined)state[k]=o[k];});
     var ds=freshSheet(),sk;                       // a file saved by an older build lacks newer keys
     for(sk in ds)if(state.sheet[sk]===undefined)state.sheet[sk]=ds[sk];
+    if(!state.customProficiencies)state.customProficiencies={armor:[],weapons:[],tools:[]};
+    ["armor","weapons","tools"].forEach(function(k){if(!state.customProficiencies[k])state.customProficiencies[k]=[];});
     state.fdata=null;state.openPanels={};
     $("editionTag").textContent=editionLabel(state.edition);
     populateClasses();populateBackgrounds();populateRaces();
@@ -2993,7 +3043,9 @@
     var mhp=maxHP();setT("HPMax",mhp);setT("HPCurrent",state.sheet.hpEdited?state.sheet.hpCurrent:mhp);setT("HPTemp",state.sheet.hpTemp);
     setT("HDTotal",state.level+"d"+state.hdFaces);
     var pf=(state.fdata&&state.fdata.proficiencies)||{};
-    setT("ProficienciesLang","Armor: "+plainTags(pf.armor||"None")+"\nWeapons: "+plainTags(pf.weapons||"None")+"\nTools: "+plainTags(pf.tools||"None")+"\nLanguages: "+languagesAll().join(", "));
+    // fold any added proficiencies in after the granted ones
+    function profLine(txt,key){var extra=customProfs(key);return plainTags(txt||"None")+(extra.length?", "+extra.join(", "):"");}
+    setT("ProficienciesLang","Armor: "+profLine(pf.armor,"armor")+"\nWeapons: "+profLine(pf.weapons,"weapons")+"\nTools: "+profLine(pf.tools,"tools")+"\nLanguages: "+languagesAll().join(", "));
     var best=Math.max(abMod(totalScore("Strength")),abMod(totalScore("Dexterity")));
     var wpns=state.equipment.inventory.filter(function(i){return i.equipped&&i.cat==="Weapon"&&i.dmg;});
     var wf=[["Wpn Name","Wpn1 AtkBonus","Wpn1 Damage"],["Wpn Name 2","Wpn2 AtkBonus ","Wpn2 Damage "],["Wpn Name 3","Wpn3 AtkBonus  ","Wpn3 Damage "]];
