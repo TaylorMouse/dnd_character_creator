@@ -56,7 +56,7 @@ app=app.replace("populateLevels();showEdition();",
  "featuresAndTraits:featuresAndTraits,condNotesFor:condNotesFor,officialLanguages:officialLanguages,languagesAll:languagesAll,mergedLanguages:mergedLanguages,"+
  "expandFeatureRefs:expandFeatureRefs,featureAttacks:featureAttacks,actionsCardHtml:actionsCardHtml,"+
  "fxAvailable:fxAvailable,fxActive:fxActive,fxTotals:fxTotals,fxDmgFor:fxDmgFor,concOptions:concOptions,acBreakdown:acBreakdown,"+
- "martialArtsDie:martialArtsDie,actionsCardHtml:actionsCardHtml,"+
+ "martialArtsDie:martialArtsDie,isMonkWeapon:isMonkWeapon,biggerDie:biggerDie,actionsCardHtml:actionsCardHtml,"+
  "srcAbbr:srcAbbr,sourceName:sourceName,isHomebrew:isHomebrew,itemAllowed:itemAllowed,"+
  "rcCardHtml:rcCardHtml,rcWhen:rcWhen,defences:defences,expertiseSkills:expertiseSkills,skillBonus:skillBonus,passiveScore:passiveScore,"+
  "itemMechanics:itemMechanics,skillAdvantage:skillAdvantage};");
@@ -895,6 +895,55 @@ setup("fighter-classic","Fighter",5);
 S.abilities.base={Strength:16,Dexterity:12,Constitution:14,Intelligence:10,Wisdom:10,Charisma:8};
 check("  a Fighter has no Martial Arts die",C.martialArtsDie(),"");
 checkTrue("  ...and keeps the plain unarmed strike (1 + Str 16 = 4)",unarmedRow().indexOf("4 bludgeoning")>=0&&unarmedRow().indexOf("Martial Arts")<0);
+
+// =====================================================================
+section("7t. Monk weapons use Dexterity and the Martial Arts die");
+function weapRow(nm){var c=C.actionsCardHtml(),i=c.indexOf('atk-name">'+nm);return i<0?"":c.substr(i,220).replace(/<[^>]*>/g," ").replace(/  +/g," ");}
+// what counts as a monk weapon (2014): shortswords and simple melee without two-handed/heavy
+setup("monk-classic","Monk",5);
+var YKLWA={name:"Yklwa",weaponCat:"simple",wtype:"M",dmg:"1d8",dmgType:"P",props:["Thrown"]};
+var SHORTSWORD={name:"Shortsword",weaponCat:"martial",wtype:"M",dmg:"1d6",dmgType:"P",props:["Finesse","Light"]};
+var GREATCLUB={name:"Greatclub",weaponCat:"simple",wtype:"M",dmg:"1d8",dmgType:"B",props:["Two-Handed"]};
+var LONGBOW={name:"Longbow",weaponCat:"martial",wtype:"R",dmg:"1d8",dmgType:"P",props:["Heavy","Two-Handed"]};
+checkTrue("  a simple melee weapon (Yklwa) is a monk weapon",C.isMonkWeapon(YKLWA));
+checkTrue("  a shortsword is a monk weapon even though it is martial",C.isMonkWeapon(SHORTSWORD));
+checkTrue("  a two-handed simple weapon (Greatclub) is not",!C.isMonkWeapon(GREATCLUB));
+checkTrue("  a ranged weapon is not",!C.isMonkWeapon(LONGBOW));
+// the die comparison keeps the larger die
+check("  1d8 beats the 1d6 Martial Arts die",C.biggerDie("1d8","1d6"),"1d8");
+check("  the 1d10 Martial Arts die beats 1d8",C.biggerDie("1d8","1d10"),"1d10");
+// Arfved's case: Str 10, Dex 16, wielding the Yklwa
+setup("monk-classic","Monk",5);
+S.abilities.base={Strength:10,Dexterity:16,Constitution:14,Intelligence:10,Wisdom:14,Charisma:8};
+S.equipment.inventory=[{name:"Yklwa",source:"ToA",cat:"Weapon",weaponCat:"simple",wtype:"M",dmg:"1d8",dmgType:"P",props:["Thrown"],qty:1,equipped:true}];
+var yk=weapRow("Yklwa");
+checkTrue("  the Yklwa uses Dexterity for damage (1d8+3)",yk.indexOf("1d8+3 piercing")>=0);
+checkTrue("  ...and for the attack roll (Dex 3 + prof 3 = +6)",yk.indexOf("+6 1d8")>=0);
+checkTrue("  ...labelled a Monk Weapon",yk.indexOf("Monk Weapon")>=0);
+checkTrue("  ...with its own 1d8 kept over the smaller 1d6 die",yk.indexOf("Martial Arts die")<0);
+// at level 17 the Martial Arts die (1d10) exceeds the Yklwa's 1d8 and takes over
+setup("monk-classic","Monk",17);
+S.abilities.base={Strength:10,Dexterity:16,Constitution:14,Intelligence:10,Wisdom:14,Charisma:8};
+S.equipment.inventory=[{name:"Yklwa",source:"ToA",cat:"Weapon",weaponCat:"simple",wtype:"M",dmg:"1d8",dmgType:"P",props:["Thrown"],qty:1,equipped:true}];
+var yk17=weapRow("Yklwa");
+checkTrue("  at L17 the 1d10 Martial Arts die is used",yk17.indexOf("1d10+")>=0&&yk17.indexOf("Martial Arts die")>=0);
+// armour turns Martial Arts off, so the monk weapon falls back to Strength
+setup("monk-classic","Monk",5);
+S.abilities.base={Strength:10,Dexterity:16,Constitution:14,Intelligence:10,Wisdom:14,Charisma:8};
+S.equipment.inventory=[{name:"Yklwa",source:"ToA",cat:"Weapon",weaponCat:"simple",wtype:"M",dmg:"1d8",dmgType:"P",props:["Thrown"],qty:1,equipped:true},
+                       {name:"Chain Mail",source:"PHB",cat:"Armor",ac:16,armorKind:"heavy",qty:1,equipped:true}];
+var ykArm=weapRow("Yklwa");
+checkTrue("  in armour the Yklwa reverts to Strength (1d8, Str 0)",ykArm.indexOf("1d8 piercing")>=0&&ykArm.indexOf("Monk Weapon")<0);
+// a non-monk gets Strength as normal, not Dex
+setup("fighter-classic","Fighter",5);
+S.abilities.base={Strength:16,Dexterity:12,Constitution:14,Intelligence:10,Wisdom:10,Charisma:8};
+S.equipment.inventory=[{name:"Yklwa",source:"ToA",cat:"Weapon",weaponCat:"simple",wtype:"M",dmg:"1d8",dmgType:"P",props:["Thrown"],qty:1,equipped:true}];
+checkTrue("  a Fighter uses Strength on the Yklwa (1d8+3)",weapRow("Yklwa").indexOf("1d8+3 piercing")>=0);
+// a finesse weapon still uses the better ability for everyone
+setup("rogue-classic","Rogue",5);
+S.abilities.base={Strength:10,Dexterity:16,Constitution:14,Intelligence:10,Wisdom:10,Charisma:8};
+S.equipment.inventory=[{name:"Rapier",source:"PHB",cat:"Weapon",weaponCat:"martial",wtype:"M",dmg:"1d8",dmgType:"P",props:["Finesse"],qty:1,equipped:true}];
+checkTrue("  a Rogue's finesse Rapier uses Dex (1d8+3)",weapRow("Rapier").indexOf("1d8+3 piercing")>=0);
 
 // =====================================================================
 section("8. Data integrity");

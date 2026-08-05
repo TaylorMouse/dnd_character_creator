@@ -1200,12 +1200,15 @@
     var att=itemAttune(it),attRequired=!!att&&att!=="optional",attuneOk=!attRequired||!!it.attuned;
     var bonus=0,bw=it.bonusWeapon||(itemInfo(it.name,it.source)||{}).bonusWeapon;
     if(bw&&attuneOk)bonus=parseInt(String(bw).replace("+",""),10)||0;
-    if(it.dmg)return {name:it.name,dmg:it.dmg,dmgType:it.dmgType,wtype:it.wtype,range:it.range,props:it.props||[],bonus:bonus,attuneOk:attuneOk,attRequired:attRequired,att:att};
+    // weaponCat (simple/martial) decides monk-weapon status; older saves omit it, so fall
+    // back to the item database
+    var wc=it.weaponCat||(itemInfo(it.name,it.source)||{}).weaponCat||"";
+    if(it.dmg)return {name:it.name,dmg:it.dmg,dmgType:it.dmgType,wtype:it.wtype,range:it.range,props:it.props||[],weaponCat:wc,bonus:bonus,attuneOk:attuneOk,attRequired:attRequired,att:att};
     if(!isVariantWeapon(it)||!it.base)return null;
     var b=null,L=window.CC_ITEMS||[];
     for(var i=0;i<L.length;i++)if(L[i].name===it.base&&L[i].dmg){b=L[i];break;}
     if(!b)return null;
-    return {name:it.name+" ("+b.name+")",dmg:b.dmg,dmgType:b.dmgType,wtype:b.wtype,range:b.range,props:b.props||[],bonus:bonus,attuneOk:attuneOk,attRequired:attRequired,att:att};
+    return {name:it.name+" ("+b.name+")",dmg:b.dmg,dmgType:b.dmgType,wtype:b.wtype,range:b.range,props:b.props||[],weaponCat:b.weaponCat||"",bonus:bonus,attuneOk:attuneOk,attRequired:attRequired,att:att};
   }
   // attunement is only possible on items whose data says so (reqAttune)
   function itemAttune(it){
@@ -2194,6 +2197,20 @@
     var w=wornArmor();
     return (w.body||w.shield)?"":die;      // armour or a shield turns Martial Arts off
   }
+  /* Whether a weapon counts as a Monk weapon, which Martial Arts lets a Monk wield with
+     Dexterity and the Martial Arts die. 2014: shortswords and simple melee weapons without
+     the two-handed or heavy property. 2024: any simple melee weapon, or a martial melee
+     weapon with the Light property. */
+  function isMonkWeapon(w){
+    if(!w||w.wtype==="R")return false;                  // melee only
+    var p=w.props||[],light=p.indexOf("Light")>=0,twoH=p.indexOf("Two-Handed")>=0,heavy=p.indexOf("Heavy")>=0;
+    if(state.edition==="one")return w.weaponCat==="simple"||(w.weaponCat==="martial"&&light);
+    if(/^shortsword$/i.test(w.name||""))return true;
+    return w.weaponCat==="simple"&&!twoH&&!heavy;
+  }
+  function dieFaces(d){var m=/^\s*1d(\d+)\s*$/.exec(String(d));return m?parseInt(m[1],10):0;}
+  // the larger of two single dice; the Martial Arts die may replace a smaller weapon die
+  function biggerDie(a,b){return dieFaces(b)>dieFaces(a)?b:a;}
   // Attacks granted by a feature's sub-options, e.g. Path of the Beast's Bite / Claws / Tail.
   function featureAttacks(){
     var out=[],seen={};
@@ -2238,6 +2255,7 @@
       if(s.higher&&s.higher.length)body=body.concat([{type:"entries",name:"At Higher Levels",entries:s.higher}]);
       return body;
     }
+    var maDie=martialArtsDie();
     var rows="";
     state.equipment.inventory.forEach(function(it){
       if(it.cat!=="Weapon")return;
@@ -2246,21 +2264,26 @@
       if(!w)return;                       // e.g. a magic variant with no base weapon chosen yet
       if(w.attRequired&&!it.attuned)return;   // requires attunement, and you are not attuned
       var props=w.props||[],finesse=props.indexOf("Finesse")>=0,thrown=props.indexOf("Thrown")>=0;
-      var mod=(w.wtype==="R"?dexM:(finesse?Math.max(strM,dexM):strM))+w.bonus;
+      var melee=w.wtype!=="R";
+      // A Monk wields a monk weapon with Dexterity and may use the Martial Arts die
+      var monkW=!!maDie&&isMonkWeapon(w),useDex=finesse||monkW;
+      var abil=w.wtype==="R"?dexM:(useDex?Math.max(strM,dexM):strM);
+      var mod=abil+w.bonus;
       var range=w.wtype==="R"?(w.range?w.range+" ft.":"Ranged"):(thrown&&w.range?"5 ft. / "+w.range:"5 ft.");
-      var melee=w.wtype!=="R",usesStr=melee&&(!finesse||strM>=dexM);
-      var dbonus=(w.wtype==="R"?dexM:(finesse?Math.max(strM,dexM):strM))+w.bonus
-                 +fxDmgFor({melee:melee,str:usesStr});      // e.g. Rage, while it is switched on
-      var dstr=w.dmg+(dbonus>0?"+"+dbonus:(dbonus<0?""+dbonus:""))+" "+dmgAbbr(w.dmgType);
+      var usesStr=melee&&(!useDex||strM>=dexM);
+      var dbonus=abil+w.bonus+fxDmgFor({melee:melee,str:usesStr});      // e.g. Rage, while it is switched on
+      var die=monkW?biggerDie(w.dmg,maDie):w.dmg;                       // Martial Arts die if larger
+      var dstr=die+(dbonus>0?"+"+dbonus:(dbonus<0?""+dbonus:""))+" "+dmgAbbr(w.dmgType);
       var notes=props.join(", ");
       if(w.bonus)notes=(notes?notes+" · ":"")+"magic +"+w.bonus;
-      var monkW=melee&&w.weaponCat!=="martial"&&props.indexOf("Two-Handed")<0&&props.indexOf("Heavy")<0;
-      notes=withCond(notes,{melee:melee,ranged:!melee,str:usesStr,finesse:finesse,monkWeapon:monkW});
+      if(monkW&&die!==w.dmg)notes=(notes?notes+" · ":"")+"Martial Arts die ("+w.dmg+" base)";
+      // the die and Dex are already applied for a monk weapon, so suppress the reminder note
+      notes=withCond(notes,{melee:melee,ranged:!melee,str:usesStr,finesse:finesse,monkWeapon:false});
       if(w.att==="optional"&&!it.attuned)notes=(notes?notes+" · ":"")+"not attuned — no magic bonus";
-      rows+=row(w.name,w.wtype==="R"?"Ranged Weapon":"Melee Weapon",range,modStr(mod+prof),dstr,notes,
+      var sub=w.wtype==="R"?"Ranged Weapon":(monkW?"Monk Weapon":"Melee Weapon");
+      rows+=row(w.name,sub,range,modStr(mod+prof),dstr,notes,
                 "Equipped item"+(it.source?" — "+sourceName(it.source):""),itemEntriesFull(it));
     });
-    var maDie=martialArtsDie();
     if(maDie){
       // Monk: the Martial Arts die replaces the flat 1, and Dexterity may stand in for Strength
       var uMod=Math.max(strM,dexM)+fxDmgFor({melee:true,str:true});
