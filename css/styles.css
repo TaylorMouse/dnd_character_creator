@@ -416,6 +416,9 @@ body.dark .sc-h .sc-src{background:#333;border-color:#4a4a4a;color:#bbb}
 .prof-edit{margin-top:5px}
 .prof-edit .prof-x{cursor:pointer;color:var(--accent);font-weight:800;margin-left:2px}
 .prof-pick{margin-top:5px;width:100%;font-size:12px;padding:5px 7px}
+/* added-defence picker mirrors the proficiency/language ones */
+.def-edit .def-x,.lang-chip .def-x{cursor:pointer;color:var(--accent);font-weight:800;margin-left:2px}
+#defPick{margin-top:6px;width:100%;font-size:12px;padding:5px 7px}
 .lang-add{display:flex;gap:6px;margin-top:6px}
 .lang-add input{flex:1;padding:6px 8px;font-size:13px}
 .cur-inline{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}

@@ -10,7 +10,7 @@
             abilities:{method:"pointbuy",base:{Strength:8,Dexterity:8,Constitution:8,Intelligence:8,Wisdom:8,Charisma:8},assign:{},other:{},override:{},rolled:null},
             equipment:freshEquipment(),
             spells:{cantrips:[],spells:[],levelFilter:"",q:""},customLanguages:[],
-            customProficiencies:{armor:[],weapons:[],tools:[]},portrait:null,
+            customProficiencies:{armor:[],weapons:[],tools:[]},customDefences:[],portrait:null,
             sheet:freshSheet()};
   }
   var state=freshCharacter();
@@ -1716,6 +1716,19 @@
   /* ---------- defences ----------
      Damage resistances come from the species data; "advantage on saving throws against X"
      and sleep immunity live in feature text, so they are read from there. */
+  var DAMAGE_TYPES=["Acid","Bludgeoning","Cold","Fire","Force","Lightning","Necrotic","Piercing","Poison","Psychic","Radiant","Slashing","Thunder"];
+  var CONDITIONS=["Blinded","Charmed","Deafened","Exhaustion","Frightened","Grappled","Incapacitated","Invisible","Paralyzed","Petrified","Poisoned","Prone","Restrained","Stunned","Unconscious"];
+  var DEF_KINDS={resist:"Resistance to",immune:"Immunity to",vulnerable:"Vulnerability to",condImmune:"Condition immunity"};
+  // defences a player adds by hand (a DM-granted cold immunity, say), like the custom
+  // proficiencies and languages; each is {kind:resist|immune|vulnerable|condImmune|custom, value}
+  function customDefs(){return state.customDefences||[];}
+  function defLabel(d){
+    if(d.kind==="resist")return "Resist "+d.value;
+    if(d.kind==="immune")return "Immune "+d.value;
+    if(d.kind==="vulnerable")return "Vulnerable "+d.value;
+    if(d.kind==="condImmune")return "Immune "+d.value+" (cond.)";
+    return d.value;
+  }
   function defences(){
     var race=currentRace(),lin=race?currentLineage(race):null;
     function u(a,b){var o=(a||[]).slice();(b||[]).forEach(function(x){if(o.indexOf(x)<0)o.push(x);});return o;}
@@ -1753,6 +1766,19 @@
     });
     return out;
   }
+  // granted defences merged with the hand-added ones, as printable lines (for the PDF)
+  function defencesSummaryLines(){
+    var d=defences(),cd=customDefs(),out=[];
+    function extra(kind){return cd.filter(function(x){return x.kind===kind;}).map(function(x){return x.value;});}
+    function u(a,b){var o=(a||[]).slice();b.forEach(function(x){if(o.indexOf(x)<0)o.push(x);});return o;}
+    var r=u(d.resist,extra("resist")),im=u(d.immune,extra("immune")),vu=u(d.vulnerable,extra("vulnerable")),ci=u(d.condImmune,extra("condImmune"));
+    if(r.length)out.push("Resistances: "+r.join(", "));
+    if(im.length)out.push("Immunities: "+im.join(", "));
+    if(vu.length)out.push("Vulnerabilities: "+vu.join(", "));
+    if(ci.length)out.push("Condition Immunities: "+ci.join(", "));
+    cd.forEach(function(x){if(x.kind==="custom")out.push(x.value);});
+    return out;
+  }
   function defencesHtml(){
     var d=defences(),h="";
     function line(l,v){return v.length?'<p class="prof-line"><b>'+l+':</b> '+esc(v.join(", "))+"</p>":"";}
@@ -1767,6 +1793,22 @@
       h+='<p class="prof-line def-fx'+(a.off?" def-fx-off":"")+'" title="'+esc(a.from)+'"><span class="def-mark">●</span> '+esc(a.text)+
          (a.off?"":' <span class="fx-while">'+esc(a.from)+"</span>")+"</p>";
     });
+    var granted=d.resist.length||d.immune.length||d.vulnerable.length||d.condImmune.length||d.adv.length||(d.fx&&d.fx.length);
+    if(!granted&&!customDefs().length)h+='<p class="prof-line tag-note">None from your class or species — add any you gain below.</p>';
+    // the editor: removable chips for hand-added defences, plus a picker and a custom field
+    var chips=customDefs().map(function(x,i){return '<span class="lang-chip">'+esc(defLabel(x))+' <span class="def-x" data-i="'+i+'">&times;</span></span>';}).join("");
+    var have={};customDefs().forEach(function(x){have[x.kind+"|"+String(x.value).toLowerCase()]=1;});
+    var opts='<option value="">— Add a defence —</option>';
+    ["resist","immune","vulnerable"].forEach(function(kind){
+      var items=DAMAGE_TYPES.filter(function(v){return !have[kind+"|"+v.toLowerCase()];});
+      if(items.length)opts+='<optgroup label="'+esc(DEF_KINDS[kind])+'">'+items.map(function(v){return '<option value="'+kind+"|"+esc(v)+'">'+esc(v)+"</option>";}).join("")+"</optgroup>";
+    });
+    var conds=CONDITIONS.filter(function(v){return !have["condImmune|"+v.toLowerCase()];});
+    if(conds.length)opts+='<optgroup label="Condition immunity">'+conds.map(function(v){return '<option value="condImmune|'+esc(v)+'">'+esc(v)+"</option>";}).join("")+"</optgroup>";
+    h+='<div class="lang-edit">'+chips+
+       '<select id="defPick">'+opts+"</select>"+
+       '<div class="lang-add"><input type="text" id="custDef" placeholder="…or type a custom one"><button class="btn" id="addDef">Add</button></div>'+
+       "</div>";
     return h;
   }
   /* ---------- advantage / disadvantage on skills ----------
@@ -2800,6 +2842,18 @@
         arr.splice(+x.getAttribute("data-i"),1);render();
       });
     });
+    // added defences (resistances / immunities / vulnerabilities / condition immunities / custom)
+    if(!state.customDefences)state.customDefences=[];
+    var dpk=host.querySelector("#defPick");
+    if(dpk)dpk.addEventListener("change",function(){
+      if(!dpk.value)return;var sv=dpk.value,i=sv.indexOf("|");
+      state.customDefences.push({kind:sv.substr(0,i),value:sv.substr(i+1)});render();
+    });
+    var cdf=host.querySelector("#custDef"),adf=host.querySelector("#addDef");
+    function addDef(){var v=cdf&&cdf.value.trim();if(v){state.customDefences.push({kind:"custom",value:v});render();}}
+    if(adf)adf.addEventListener("click",addDef);
+    if(cdf)cdf.addEventListener("keydown",function(e){if(e.keyCode===13){e.preventDefault();addDef();}});
+    Array.prototype.forEach.call(host.querySelectorAll(".def-x"),function(x){x.addEventListener("click",function(){state.customDefences.splice(+x.getAttribute("data-i"),1);render();});});
     // currency
     Array.prototype.forEach.call(host.querySelectorAll(".sh-cur"),function(inp){inp.addEventListener("input",function(){state.equipment.currency[inp.getAttribute("data-k")]=parseInt(inp.value,10)||0;var g=host.querySelector("#shGp");if(g)g.innerHTML=Math.round(currencyGP()*100)/100;});});
     // inventory add / custom / controls
@@ -2827,7 +2881,7 @@
   }
 
   /* ---------- save / load / export ---------- */
-  var SAVE_KEYS=["edition","name","className","source","slug","hdFaces","level","manualHp","subclassName","choices","background","bgIsCustom","bgCustomName","bgCustomDesc","bgChoices","details","race","raceLineage","raceChoices","abilities","equipment","spells","customLanguages","customProficiencies","portrait","sheet"];
+  var SAVE_KEYS=["edition","name","className","source","slug","hdFaces","level","manualHp","subclassName","choices","background","bgIsCustom","bgCustomName","bgCustomDesc","bgChoices","details","race","raceLineage","raceChoices","abilities","equipment","spells","customLanguages","customProficiencies","customDefences","portrait","sheet"];
   function processPortrait(file){
     var rd=new FileReader();
     rd.onload=function(){
@@ -3080,6 +3134,7 @@
     for(sk in ds)if(state.sheet[sk]===undefined)state.sheet[sk]=ds[sk];
     if(!state.customProficiencies)state.customProficiencies={armor:[],weapons:[],tools:[]};
     ["armor","weapons","tools"].forEach(function(k){if(!state.customProficiencies[k])state.customProficiencies[k]=[];});
+    if(!state.customDefences)state.customDefences=[];
     state.fdata=null;state.openPanels={};
     $("editionTag").textContent=editionLabel(state.edition);
     populateClasses();populateBackgrounds();populateRaces();
@@ -3140,7 +3195,9 @@
     for(var i=0;i<3&&i<wpns.length;i++){setT(wf[i][0],wpns[i].name);setT(wf[i][1],modStr(best+prof));setT(wf[i][2],wpns[i].dmg+"+"+best+(wpns[i].dmgType?" "+wpns[i].dmgType:""));}
     var c=state.equipment.currency;setT("CP",c.cp);setT("SP",c.sp);setT("EP",c.ep);setT("GP",c.gp);setT("PP",c.pp);
     setT("Equipment",state.equipment.inventory.map(function(it){return it.name+(it.qty>1?" x"+it.qty:"");}).join("\n"));
-    var feats=featureNamesList();setT("Features and Traits",feats.join("\n"));setT("Feat+Traits",feats.join("\n"));
+    var feats=featureNamesList(),dl=defencesSummaryLines();
+    var featText=(dl.length?feats.concat(["","Defences:"]).concat(dl):feats).join("\n");
+    setT("Features and Traits",featText);setT("Feat+Traits",featText);
     var info=spellInfo();
     if(info){
       setT("Spellcasting Class 2",state.className);setT("SpellcastingAbility 2",F.abilityFields[info.ability]||info.ability);

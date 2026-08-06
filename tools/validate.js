@@ -59,6 +59,7 @@ app=app.replace("populateLevels();showEdition();",
  "martialArtsDie:martialArtsDie,isMonkWeapon:isMonkWeapon,biggerDie:biggerDie,actionsCardHtml:actionsCardHtml,classOptions:classOptions,"+
  "profBlock:profBlock,profOpts:profOpts,customProfs:customProfs,"+
  "allRacialSpells:allRacialSpells,pickedRacialSpells:pickedRacialSpells,spellPicksAll:spellPicksAll,currentRace:currentRace,currentLineage:currentLineage,originShort:originShort,"+
+ "defencesHtml:defencesHtml,defLabel:defLabel,defencesSummaryLines:defencesSummaryLines,"+
  "srcAbbr:srcAbbr,sourceName:sourceName,isHomebrew:isHomebrew,itemAllowed:itemAllowed,"+
  "rcCardHtml:rcCardHtml,rcWhen:rcWhen,defences:defences,expertiseSkills:expertiseSkills,skillBonus:skillBonus,passiveScore:passiveScore,"+
  "itemMechanics:itemMechanics,skillAdvantage:skillAdvantage};");
@@ -1070,6 +1071,37 @@ check("  a 2024 Elf's cumulative spells are not turned into a pick",(elf&&elf.sp
 var DASH=String.fromCharCode(8212);
 checkTrue("  originShort trims to the source name",C.originShort("Inquisitive "+DASH+" subclass feature, level 3")==="Inquisitive");
 checkTrue("  ...and handles a parenthesised source",C.originShort("Eladrin (MPMM) "+DASH+" lineage trait")==="Eladrin");
+
+// =====================================================================
+section("7y. Defences card is always shown and takes hand-added entries");
+setup("fighter-classic","Fighter",5);S.customDefences=[];
+var h1=C.defencesHtml();
+checkTrue("  the card renders even with no granted defences",h1.length>0);
+checkTrue("  ...offering a picker",h1.indexOf("defPick")>=0);
+checkTrue("  ...and a custom field",h1.indexOf("custDef")>=0);
+checkTrue("  ...with a hint that there are none yet",h1.indexOf("None from your class")>=0);
+// Erenar's DM-granted cold immunity
+S.customDefences.push({kind:"immune",value:"Cold"});
+var h2=C.defencesHtml();
+checkTrue("  an added immunity shows as a removable chip",h2.indexOf("Immune Cold")>=0&&h2.indexOf("def-x")>=0);
+checkTrue("  ...and leaves the immunity dropdown",h2.indexOf("immune|Cold")<0);
+checkTrue("  ...but Cold is still offered as a resistance",h2.indexOf("resist|Cold")>=0);
+checkTrue("  the hint is gone once something is added",h2.indexOf("None from your class")<0);
+// labels for each relation
+check("  resistance label",C.defLabel({kind:"resist",value:"Fire"}),"Resist Fire");
+check("  immunity label",C.defLabel({kind:"immune",value:"Cold"}),"Immune Cold");
+check("  vulnerability label",C.defLabel({kind:"vulnerable",value:"Thunder"}),"Vulnerable Thunder");
+check("  condition-immunity label",C.defLabel({kind:"condImmune",value:"Poisoned"}),"Immune Poisoned (cond.)");
+check("  a custom note shows verbatim",C.defLabel({kind:"custom",value:"Half from spells"}),"Half from spells");
+// the printable summary folds granted and added together
+S.customDefences=[{kind:"immune",value:"Cold"},{kind:"custom",value:"Half from spells on a save"}];
+var lines=C.defencesSummaryLines().join(" | ");
+checkTrue("  the PDF summary lists the immunity",lines.indexOf("Immunities: Cold")>=0);
+checkTrue("  ...and the custom note",lines.indexOf("Half from spells on a save")>=0);
+// the card is on the rendered sheet for any character
+setup("wizard-classic","Wizard",1);S.customDefences=[];
+C.render();
+checkTrue("  a bare level-1 Wizard still shows the Defences card",_els["sheetPanel"].innerHTML.indexOf(">Defences<")>=0);
 
 // =====================================================================
 section("8. Data integrity");
