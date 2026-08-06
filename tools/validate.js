@@ -58,6 +58,7 @@ app=app.replace("populateLevels();showEdition();",
  "fxAvailable:fxAvailable,fxActive:fxActive,fxTotals:fxTotals,fxDmgFor:fxDmgFor,concOptions:concOptions,acBreakdown:acBreakdown,"+
  "martialArtsDie:martialArtsDie,isMonkWeapon:isMonkWeapon,biggerDie:biggerDie,actionsCardHtml:actionsCardHtml,classOptions:classOptions,"+
  "profBlock:profBlock,profOpts:profOpts,customProfs:customProfs,"+
+ "allRacialSpells:allRacialSpells,pickedRacialSpells:pickedRacialSpells,spellPicksAll:spellPicksAll,currentRace:currentRace,currentLineage:currentLineage,originShort:originShort,"+
  "srcAbbr:srcAbbr,sourceName:sourceName,isHomebrew:isHomebrew,itemAllowed:itemAllowed,"+
  "rcCardHtml:rcCardHtml,rcWhen:rcWhen,defences:defences,expertiseSkills:expertiseSkills,skillBonus:skillBonus,passiveScore:passiveScore,"+
  "itemMechanics:itemMechanics,skillAdvantage:skillAdvantage};");
@@ -1045,6 +1046,30 @@ S.choices["Metamagic:0"]="Quickened Spell";S.choices["Metamagic:1"]="Twinned Spe
 C.render();
 var h=_els["sheetPanel"].innerHTML;
 checkTrue("  the Metamagic card appears on the sheet",h.indexOf(">Metamagic<")>=0&&h.indexOf("Quickened Spell")>=0);
+
+// =====================================================================
+section("7x. Racial spell choices are a pick, not all granted");
+setup("rogue-classic","Rogue",5);S.race={name:"Astral Elf",source:"AAG"};S.raceLineage=null;S.raceChoices={};
+var ae=C.currentRace();
+checkTrue("  Astral Elf carries a spell pick",!!(ae&&ae.spellPicks&&ae.spellPicks.length));
+check("  ...offering three cantrips",ae.spellPicks[0].from.join(","),"Dancing Lights,Light,Sacred Flame");
+check("  none are fixed grants",(ae.spells||[]).length,0);
+check("  with no choice made, no racial spells are known",C.allRacialSpells().length,0);
+S.raceChoices["race:spellpick0:0"]="Light";
+var got=C.allRacialSpells().map(function(s){return s.name;});
+check("  choosing one grants exactly that spell",got.join(","),"Light");
+checkTrue("  ...and not the others",got.indexOf("Sacred Flame")<0&&got.indexOf("Dancing Lights")<0);
+C.render();
+var dh=_els["sheetPanel"].innerHTML;
+checkTrue("  the sheet shows the chosen cantrip only",dh.indexOf("Light")>=0&&dh.indexOf("Sacred Flame")<0);
+// the multi-block races that are NOT choices stay fully granted
+setup("wizard-classic","Wizard",5);S.race={name:"Elf",source:"XPHB"};S.raceChoices={};
+var elf=C.currentRace();
+check("  a 2024 Elf's cumulative spells are not turned into a pick",(elf&&elf.spellPicks?elf.spellPicks.length:0),0);
+// origin tags on the action economy
+var DASH=String.fromCharCode(8212);
+checkTrue("  originShort trims to the source name",C.originShort("Inquisitive "+DASH+" subclass feature, level 3")==="Inquisitive");
+checkTrue("  ...and handles a parenthesised source",C.originShort("Eladrin (MPMM) "+DASH+" lineage trait")==="Eladrin");
 
 // =====================================================================
 section("8. Data integrity");

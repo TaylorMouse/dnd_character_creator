@@ -885,6 +885,29 @@
     return race.lineages.filter(function(l){return l.name===state.raceLineage;})[0]||null;
   }
   function raceChoiceCount(group,count){var n=0;for(var i=0;i<count;i++)if(state.raceChoices[group+":"+i])n++;return n;}
+  /* Species that grant a *choice* of spell (Astral Elf's Astral Fire — one of dancing
+     lights / light / sacred flame) store the options in spellPicks. Only the chosen ones
+     count as known, so racial spells route through here rather than being read raw. */
+  function spellPicksAll(race,lin){
+    var out=[];
+    if(race)(race.spellPicks||[]).forEach(function(pk,i){out.push({pk:pk,group:"race:spellpick"+i});});
+    if(lin)(lin.spellPicks||[]).forEach(function(pk,i){out.push({pk:pk,group:"lin:spellpick"+i});});
+    return out;
+  }
+  function pickedRacialSpells(){
+    var race=currentRace(),lin=race?currentLineage(race):null,out=[];
+    spellPicksAll(race,lin).forEach(function(p){
+      for(var i=0;i<p.pk.choose;i++){var v=state.raceChoices[p.group+":"+i];if(v)out.push({name:v,cantrip:!!p.pk.cantrip,when:p.pk.when||"known"});}
+    });
+    return out;
+  }
+  // Every racial/innate spell the character actually has: the fixed grants plus their picks.
+  function allRacialSpells(){
+    var race=currentRace(),lin=race?currentLineage(race):null,out=[];
+    if(race)out=out.concat(race.spells||[]);
+    if(lin)out=out.concat(lin.spells||[]);
+    return out.concat(pickedRacialSpells());
+  }
 
   /* ---------- custom origin ability increases ----------
      Many 2014-era species (MPMM, MOT, AAG, and PHB Human) carry no fixed ability
@@ -1010,6 +1033,12 @@
     if(langs.anyStandard){s+=raceSelectHtml("race:lang",langPool(),langs.anyStandard,"Language");if(raceChoiceCount("race:lang",langs.anyStandard)<langs.anyStandard)pending=true;}
     if(langs.any){s+=raceSelectHtml("race:langany",langPool(),langs.any,"Language (any)");if(raceChoiceCount("race:langany",langs.any)<langs.any)pending=true;}
     if(spells.length)s+=line("Innate / Racial Spells",spells.map(function(sp){return sp.name+(sp.cantrip?" (cantrip)":"");}).join(", "));
+    // a choice of spell (e.g. Astral Fire): pick from the listed options
+    spellPicksAll(race,lin).forEach(function(p){
+      var lbl=(p.pk.cantrip?"Cantrip":"Spell")+" of your choice"+(p.pk.choose>1?" (choose "+p.pk.choose+")":"");
+      s+=raceSelectHtml(p.group,p.pk.from,p.pk.choose,lbl);
+      if(raceChoiceCount(p.group,p.pk.choose)<p.pk.choose)pending=true;
+    });
     spellChoices.forEach(function(lbl){s+='<p class="prof-line tag-note">Plus choose '+esc(lbl)+" — pickable in the Spells step (coming later).</p>";});
     if(scAbility){s+=raceSelectHtml("race:scability",scAbility,1,"Spellcasting ability for racial spells");if(raceChoiceCount("race:scability",1)<1)pending=true;}
 
@@ -1904,14 +1933,19 @@
     return str;
   }
 
-  function sheetCollapse(items,prefix){
+  // the leading name of an origin string ("Inquisitive — subclass feature…" -> "Inquisitive")
+  function originShort(o){return o?String(o).split(/\s+[—-]\s+| \(/)[0].trim():"";}
+  // showOrigin: render each entry's source as a small inline tag, so on the action economy
+  // it is obvious at a glance which abilities come from a subclass or species
+  function sheetCollapse(items,prefix,showOrigin){
     if(!items||!items.length)return '<span class="res-sub">None.</span>';
     return items.map(function(it,i){
       var d=(it.entries&&it.entries.length)?it.entries.map(renderEntry).join(""):'<p class="res-sub">No description.</p>';
       var why=it.origin?' title="'+esc(it.origin)+'"':"";
+      var tag=(showOrigin&&it.origin)?'<span class="sc-src">'+esc(originShort(it.origin))+"</span>":"";
       var box=it.fx?'<span class="fx-box'+(fxIsOn(it.fx)?" on":"")+'" data-fx-set="'+esc(it.fx)+'" title="'+
                     esc(fxIsOn(it.fx)?"Active — click to end":"Click when you use this")+'"></span>':"";
-      return '<div class="sc-item'+(it.fx&&fxIsOn(it.fx)?" fx-live":"")+'"><div class="sc-h'+(it.origin?" has-origin":"")+'"'+why+' data-tgt="'+prefix+i+'">'+box+esc(it.name)+'<span class="sc-chev">&#9662;</span></div><div class="sc-d">'+d+"</div></div>";
+      return '<div class="sc-item'+(it.fx&&fxIsOn(it.fx)?" fx-live":"")+'"><div class="sc-h'+(it.origin?" has-origin":"")+'"'+why+' data-tgt="'+prefix+i+'">'+box+esc(it.name)+tag+'<span class="sc-chev">&#9662;</span></div><div class="sc-d">'+d+"</div></div>";
     }).join("");
   }
   function spellItems(keys){
@@ -2097,7 +2131,7 @@
     var feats=featuresAndTraits();
     feats.forEach(classify);
     var race=currentRace(),lin=race?currentLineage(race):null;
-    var rsp=[];if(race)rsp=rsp.concat(race.spells||[]);if(lin)rsp=rsp.concat(lin.spells||[]);
+    var rsp=allRacialSpells();
     rsp.forEach(function(sp){var s=spellByName(sp.name);if(s&&s.time&&s.time.indexOf("bonus")>=0){var c={};for(var kk in s)c[kk]=s[kk];c._origin=(race?race.name:"species")+" — innate spell";push(out.bonus,"b"+s.name,c);}});
     // attack options: the on-hit riders themselves, then any feature that augments one by
     // name (Physician's Touch improves Hand of Harm), skipping anything already shown above
@@ -2224,8 +2258,7 @@
       var s=spellByKey(k);
       if(s&&s.conc&&!seen[k]){seen[k]=1;out.push({key:k,label:s.name+(s.level?" ("+ordinal(s.level)+")":" (Cantrip)")});}
     });
-    var race=currentRace(),lin=race?currentLineage(race):null,rsp=[];
-    if(race)rsp=rsp.concat(race.spells||[]);if(lin)rsp=rsp.concat(lin.spells||[]);
+    var rsp=allRacialSpells();
     rsp.forEach(function(sp){var s=spellByName(sp.name);if(!s||!s.conc)return;var k=s.name+"|"+s.source;
       if(!seen[k]){seen[k]=1;out.push({key:k,label:s.name+" (innate)"});}});
     out.sort(function(a,b){return a.label.localeCompare(b.label);});
@@ -2418,10 +2451,10 @@
     var html='<div class="apa">Attacks per Action: <b>'+apa+"</b></div>";
     html+='<table class="atk-table"><thead><tr><th>Attack</th><th>Range</th><th>Hit / DC</th><th>Damage</th><th>Notes</th></tr></thead><tbody>'+rows+"</tbody></table>";
     var ae=actionEconomy();
-    if(ae.attack.length)html+='<div class="ae-sec"><div class="ae-h">Attack Options (on a hit)</div>'+sheetCollapse(ae.attack,"ao")+"</div>";
-    if(ae.action.length)html+='<div class="ae-sec"><div class="ae-h">Other Actions</div>'+sheetCollapse(ae.action,"oa")+"</div>";
-    if(ae.bonus.length)html+='<div class="ae-sec"><div class="ae-h">Bonus Actions</div>'+sheetCollapse(ae.bonus,"ba")+"</div>";
-    if(ae.reaction.length)html+='<div class="ae-sec"><div class="ae-h">Reactions</div>'+sheetCollapse(ae.reaction,"ra")+"</div>";
+    if(ae.attack.length)html+='<div class="ae-sec"><div class="ae-h">Attack Options (on a hit)</div>'+sheetCollapse(ae.attack,"ao",true)+"</div>";
+    if(ae.action.length)html+='<div class="ae-sec"><div class="ae-h">Other Actions</div>'+sheetCollapse(ae.action,"oa",true)+"</div>";
+    if(ae.bonus.length)html+='<div class="ae-sec"><div class="ae-h">Bonus Actions</div>'+sheetCollapse(ae.bonus,"ba",true)+"</div>";
+    if(ae.reaction.length)html+='<div class="ae-sec"><div class="ae-h">Reactions</div>'+sheetCollapse(ae.reaction,"ra",true)+"</div>";
     html+='<div class="combat-actions"><div class="ca-h">Actions in Combat</div>Attack · Dash · Disengage · Dodge · Grapple · Help · Hide · Influence · Magic · Ready · Search · Shove · Utilize</div>';
     return html;
   }
@@ -2572,7 +2605,7 @@
       spBody+='<div class="res-sub" style="margin-top:6px">DC '+(8+prof+abMod(totalScore(info.ability)))+" · attack "+modStr(prof+abMod(totalScore(info.ability)))+"</div>";
     }
     // racial / innate spells (from species/lineage), shown even for non-casters
-    var rsp=[];if(race)rsp=rsp.concat(race.spells||[]);if(lin)rsp=rsp.concat(lin.spells||[]);
+    var rsp=allRacialSpells();
     if(rsp.length){
       var rk=[],rseen={};rsp.forEach(function(sp){var s=spellByName(sp.name);if(s&&!rseen[s.name]){rseen[s.name]=1;rk.push(s.name+"|"+s.source);}});
       if(rk.length)spBody+='<div class="spell-lvl-h">Racial / Innate</div>'+sheetCollapse(spellItems(rk),"rc");

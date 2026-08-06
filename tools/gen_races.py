@@ -140,6 +140,41 @@ def ancestry_of(entries):
                     return {"label":e["name"]+" — choose one","rows":rows}
     return None
 
+def detect_spell_pick(arr):
+    # 5etools encodes "you know one of the following spells of your choice" as several
+    # parallel additionalSpells blocks, each granting a single spell at the same level.
+    # (Astral Elf's Astral Fire: dancing lights / light / sacred flame.) Detect that shape
+    # so the app can offer a pick instead of granting all of them. Cumulative multi-block
+    # grants (2024 Elf/Tiefling legacies, which differ in shape) are left alone.
+    if not isinstance(arr, list) or len(arr) < 2:
+        return None
+    specs = []
+    for b in arr:
+        if not isinstance(b, dict):
+            return None
+        one = []
+        when = lvl = None
+        for kind in ("known", "innate"):
+            blk = b.get(kind)
+            if not isinstance(blk, dict):
+                continue
+            for L, v in blk.items():
+                vs = v if isinstance(v, list) else [v]
+                for x in vs:
+                    if not isinstance(x, str):   # a {choose:...} directive -> not this pattern
+                        return None
+                    one.append(x); when = kind; lvl = L
+        if len(one) != 1:
+            return None
+        specs.append((when, lvl, one[0]))
+    if len({s[0] for s in specs}) != 1 or len({s[1] for s in specs}) != 1:
+        return None                              # blocks must be the same kind and level
+    return {"choose": 1,
+            "from": [spell_name(s[2]) for s in specs],
+            "cantrip": all(s[2].endswith("#c") for s in specs),
+            "when": specs[0][0]}
+
+
 def base_obj(r):
     # 5etools marks MPMM/VRGR-style species with `lineage`; their ability increases and
     # languages are not stored per race because the book states them once:
@@ -172,7 +207,13 @@ def base_obj(r):
       "ancestry":ancestry_of(r.get("entries")),
     }
     sp=parse_spells(r.get("additionalSpells"))
-    o["spells"]=sp["spells"]; o["spellChoices"]=sp["choices"]; o["scAbility"]=sp["scAbility"]
+    pick=detect_spell_pick(r.get("additionalSpells"))
+    picks=[]
+    if pick:
+        picks=[pick]
+        chosen_set={n.lower() for n in pick["from"]}
+        sp["spells"]=[s for s in sp["spells"] if s["name"].lower() not in chosen_set]
+    o["spells"]=sp["spells"]; o["spellChoices"]=sp["choices"]; o["scAbility"]=sp["scAbility"]; o["spellPicks"]=picks
     return o
 
 def sub_obj(s):
@@ -187,9 +228,14 @@ def version_lineage(base,ver):
        "size":"","speed":"","senses":[],"ability":{"fixed":{},"choose":[]},
        "resist":[],"immune":[],"languages":{"fixed":[],"anyStandard":0,"any":0},
        "skills":{"fixed":[],"choose":None,"any":0},"weapons":[],"armor":[],"tools":[],
-       "traits":[],"ancestry":None,"spells":[],"spellChoices":[],"scAbility":None}
+       "traits":[],"ancestry":None,"spells":[],"spellChoices":[],"scAbility":None,"spellPicks":[]}
     if ver.get("darkvision"): o["senses"]=["Darkvision "+str(ver["darkvision"])+" ft."]
     sp=parse_spells(ver.get("additionalSpells")); o["spells"]=sp["spells"]; o["spellChoices"]=sp["choices"]; o["scAbility"]=sp["scAbility"]
+    pick=detect_spell_pick(ver.get("additionalSpells"))
+    if pick:
+        o["spellPicks"]=[pick]
+        chosen_set={n.lower() for n in pick["from"]}
+        o["spells"]=[s for s in o["spells"] if s["name"].lower() not in chosen_set]
     # extract replaced trait entries from _mod
     mod=ver.get("_mod",{}).get("entries")
     items=mod if isinstance(mod,list) else ([mod] if mod else [])
