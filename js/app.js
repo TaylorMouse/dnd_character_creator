@@ -420,10 +420,19 @@
         return '<option value="'+esc(val)+'"'+dis+sel+(o.source?' title="'+esc(sourceName(o.source))+'"':"")+'>'+esc(lbl)+"</option>";
       }).join("");
       body+='<select class="choice-sel" data-group="'+esc(groupKey)+'" data-idx="'+i+'">'+opts+"</select>";
-      if(chosen[i]){
-        var o=pool.filter(function(x){return x.name===chosen[i];})[0];
-        if(o&&o.entries&&o.entries.length)body+='<div class="choice-desc">'+o.entries.map(renderEntry).join("")+"</div>";
-      }
+    }
+    // list every option with its full description (as 5etools shows them inline), so the
+    // player can read them all before choosing; chosen ones are marked
+    var ref="";
+    pool.forEach(function(o){
+      var isPicked=chosen.indexOf(o.name)>=0;
+      var nm=o.name+(o.prerequisite?" — "+o.prerequisite:"")+(o.source&&fd&&o.source!==fd.source?" ("+srcAbbr(o.source)+")":"");
+      ref+='<div class="opt-ref'+(isPicked?" picked":"")+'"><div class="opt-ref-h">'+esc(nm)+(isPicked?' <span class="opt-tick">&#10003; chosen</span>':"")+"</div>"+
+           ((o.entries&&o.entries.length)?o.entries.map(renderEntry).join(""):"")+"</div>";
+    });
+    if(ref){
+      var openAttr=pool.length<=8?" open":"";                 // long pools (invocations) start collapsed
+      body+='<details class="opt-ref-list"'+openAttr+'><summary>All '+pool.length+" options</summary>"+ref+"</details>";
     }
     return head+body+"</div>";
   }
