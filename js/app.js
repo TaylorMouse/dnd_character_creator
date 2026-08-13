@@ -1421,6 +1421,7 @@
     opts.forEach(function(o){if(o.total>best.total)best=o;});
     var finalParts=best.parts.slice(),total=best.total;
     if(shieldBonus){finalParts.push([shield.name,shieldBonus]);total+=shieldBonus;}
+    if(body&&hasStyle("Defense")){finalParts.push(["Defense style",1]);total+=1;}  // +1 AC while in armour
     var fxt=fxTotals();                                  // e.g. Bladesong while it is on
     if(fxt.ac){finalParts.push([fxt.sources.ac.join(" + "),fxt.ac]);total+=fxt.ac;}
     var other=parseInt(state.sheet.acOther,10)||0;
@@ -2442,6 +2443,17 @@
     });
     return out;
   }
+  /* Fighting styles that change the numbers: Dueling (+2 damage with a one-handed melee
+     weapon and no other weapon), Archery (+2 to ranged attack rolls), Defense (+1 AC in
+     armor), Thrown Weapon Fighting (+2 thrown damage). Reroll-style ones (Great/Two-Weapon
+     Fighting) can't fold into a single number, so they show as a note. */
+  function fightingStyles(){
+    var out=[],i,v;for(i=0;i<20;i++){v=state.choices["Fighting Style:"+i];if(v&&out.indexOf(v)<0)out.push(v);}return out;
+  }
+  function hasStyle(nm){var s=fightingStyles(),i;for(i=0;i<s.length;i++)if(s[i].indexOf(nm)>=0)return true;return false;}
+  function equippedMeleeCount(){
+    var n=0;state.equipment.inventory.forEach(function(it){if(it.cat==="Weapon"&&it.equipped){var w=resolveWeapon(it);if(w&&w.wtype!=="R")n++;}});return n;
+  }
   function scaledDie(sc,L){var best="",bl=-1;for(var k in sc){var n=+k;if(n<=L&&n>bl){bl=n;best=sc[k];}}return best;}
   function capital(s){return s?s.charAt(0).toUpperCase()+s.slice(1):"";}
   function actionsCardHtml(){
@@ -2474,6 +2486,7 @@
       if(!w)return;                       // e.g. a magic variant with no base weapon chosen yet
       if(w.attRequired&&!it.attuned)return;   // requires attunement, and you are not attuned
       var props=w.props||[],finesse=props.indexOf("Finesse")>=0,thrown=props.indexOf("Thrown")>=0;
+      var twoH=props.indexOf("Two-Handed")>=0,versatile=props.indexOf("Versatile")>=0;
       var melee=w.wtype!=="R";
       // A Monk wields a monk weapon with Dexterity and may use the Martial Arts die
       var monkW=!!maDie&&isMonkWeapon(w),useDex=finesse||monkW;
@@ -2481,17 +2494,24 @@
       var mod=abil+w.bonus;
       var range=w.wtype==="R"?(w.range?w.range+" ft.":"Ranged"):(thrown&&w.range?"5 ft. / "+w.range:"5 ft.");
       var usesStr=melee&&(!useDex||strM>=dexM);
-      var dbonus=abil+w.bonus+fxDmgFor({melee:melee,str:usesStr});      // e.g. Rage, while it is switched on
+      // fighting-style bonuses to this weapon
+      var styleDmg=0,styleHit=0,styleNotes=[];
+      if(hasStyle("Dueling")&&melee&&!twoH&&equippedMeleeCount()===1){styleDmg+=2;styleNotes.push("+2 Dueling");}
+      if(hasStyle("Thrown Weapon Fighting")&&thrown&&melee){styleDmg+=2;styleNotes.push("+2 Thrown Weapon Fighting");}
+      if(hasStyle("Archery")&&!melee){styleHit+=2;styleNotes.push("+2 Archery (to hit)");}
+      if(hasStyle("Great Weapon Fighting")&&melee&&(twoH||versatile))styleNotes.push("reroll 1s & 2s (Great Weapon Fighting)");
+      var dbonus=abil+w.bonus+fxDmgFor({melee:melee,str:usesStr})+styleDmg; // e.g. Rage/Dueling
       var die=monkW?biggerDie(w.dmg,maDie):w.dmg;                       // Martial Arts die if larger
       var dstr=die+(dbonus>0?"+"+dbonus:(dbonus<0?""+dbonus:""))+" "+dmgAbbr(w.dmgType);
       var notes=props.join(", ");
       if(w.bonus)notes=(notes?notes+" · ":"")+"magic +"+w.bonus;
       if(monkW&&die!==w.dmg)notes=(notes?notes+" · ":"")+"Martial Arts die ("+w.dmg+" base)";
+      if(styleNotes.length)notes=(notes?notes+" · ":"")+styleNotes.join(" · ");
       // the die and Dex are already applied for a monk weapon, so suppress the reminder note
       notes=withCond(notes,{melee:melee,ranged:!melee,str:usesStr,finesse:finesse,monkWeapon:false});
       if(w.att==="optional"&&!it.attuned)notes=(notes?notes+" · ":"")+"not attuned — no magic bonus";
       var sub=w.wtype==="R"?"Ranged Weapon":(monkW?"Monk Weapon":"Melee Weapon");
-      rows+=row(w.name,sub,range,modStr(mod+prof),dstr,notes,
+      rows+=row(w.name,sub,range,modStr(mod+prof+styleHit),dstr,notes,
                 "Equipped item"+(it.source?" — "+sourceName(it.source):""),itemEntriesFull(it));
     });
     if(maDie){

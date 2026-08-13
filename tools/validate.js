@@ -59,6 +59,7 @@ app=app.replace("populateLevels();showEdition();",
  "martialArtsDie:martialArtsDie,isMonkWeapon:isMonkWeapon,biggerDie:biggerDie,actionsCardHtml:actionsCardHtml,classOptions:classOptions,"+
  "profBlock:profBlock,profOpts:profOpts,customProfs:customProfs,"+
  "orphanProgressions:orphanProgressions,optProgMap:optProgMap,validChoiceKeys:validChoiceKeys,"+
+ "fightingStyles:fightingStyles,hasStyle:hasStyle,"+
  "allRacialSpells:allRacialSpells,pickedRacialSpells:pickedRacialSpells,spellPicksAll:spellPicksAll,currentRace:currentRace,currentLineage:currentLineage,originShort:originShort,"+
  "defencesHtml:defencesHtml,defLabel:defLabel,defencesSummaryLines:defencesSummaryLines,"+
  "speciesLabel:speciesLabel,cleanLineageName:cleanLineageName,dcAbility:dcAbility,abilitySaveDc:abilitySaveDc,"+
@@ -1185,6 +1186,55 @@ check("  Battle Master's Maneuvers progression is picked up too",C.orphanProgres
 // a normal same-named progression (Sorcerer Metamagic) is NOT treated as an orphan
 setup("sorcerer-classic","Sorcerer",6);
 check("  Metamagic (feature == progression) is not an orphan",C.orphanProgressions(S.fdata,null,C.optProgMap(S.fdata,null)).length,0);
+
+// =====================================================================
+section("7ad. Fighting styles change the numbers");
+function atkRow(nm){var c=C.actionsCardHtml(),i=c.indexOf('atk-name">'+nm);return i<0?"":c.substr(i,240).replace(/<[^>]*>/g," ").replace(/  +/g," ");}
+var LONGSWORD={name:"Longsword",source:"PHB",cat:"Weapon",dmg:"1d8",dmgType:"S",weaponCat:"martial",wtype:"M",props:["Versatile"],qty:1,equipped:true};
+var GREATSWORD={name:"Greatsword",source:"PHB",cat:"Weapon",dmg:"2d6",dmgType:"S",weaponCat:"martial",wtype:"M",props:["Heavy","Two-Handed"],qty:1,equipped:true};
+var SHORTSWORD={name:"Shortsword",source:"PHB",cat:"Weapon",dmg:"1d6",dmgType:"P",weaponCat:"martial",wtype:"M",props:["Finesse","Light"],qty:1,equipped:true};
+var LONGBOW={name:"Longbow",source:"PHB",cat:"Weapon",dmg:"1d8",dmgType:"P",weaponCat:"martial",wtype:"R",range:"150/600",props:["Heavy","Two-Handed"],qty:1,equipped:true};
+// Dueling: +2 damage with a one-handed melee weapon when it is the only melee weapon
+setup("fighter-classic","Fighter",5);
+S.abilities.base={Strength:18,Dexterity:12,Constitution:14,Intelligence:10,Wisdom:10,Charisma:8};
+S.choices["Fighting Style:0"]="Dueling";
+S.equipment.inventory=[LONGSWORD];
+checkTrue("  Dueling adds +2 to a one-handed melee weapon (1d8+6)",atkRow("Longsword").indexOf("1d8+6")>=0);
+checkTrue("  ...and names the source",atkRow("Longsword").indexOf("Dueling")>=0);
+S.equipment.inventory=[GREATSWORD];
+checkTrue("  Dueling does not apply to a two-handed weapon (2d6+4)",atkRow("Greatsword").indexOf("2d6+4")>=0&&atkRow("Greatsword").indexOf("Dueling")<0);
+S.equipment.inventory=[LONGSWORD,SHORTSWORD];
+checkTrue("  Dueling is off while a second melee weapon is wielded",atkRow("Longsword").indexOf("Dueling")<0);
+// Archery: +2 to ranged attack rolls
+setup("fighter-classic","Fighter",5);
+S.abilities.base={Strength:10,Dexterity:16,Constitution:14,Intelligence:10,Wisdom:10,Charisma:8};
+S.choices["Fighting Style:0"]="Archery";S.equipment.inventory=[LONGBOW];
+checkTrue("  Archery adds +2 to a ranged attack (+8 = Dex3+prof3+2)",atkRow("Longbow").indexOf("+8 1d8")>=0);
+checkTrue("  ...noted as to-hit only",atkRow("Longbow").indexOf("Archery")>=0);
+// Defense: +1 AC while in armour, not while unarmoured
+setup("fighter-classic","Fighter",5);
+S.abilities.base={Strength:14,Dexterity:14,Constitution:14,Intelligence:10,Wisdom:10,Charisma:8};
+S.choices["Fighting Style:0"]="Defense";
+S.equipment.inventory=[{name:"Chain Mail",source:"PHB",cat:"Armor",ac:16,armorKind:"heavy",qty:1,equipped:true}];
+check("  Defense adds +1 AC in armour (16+1)",C.computeAC(),17);
+S.equipment.inventory=[];
+check("  ...but not while unarmoured",C.computeAC(),12);
+// Thrown Weapon Fighting: +2 thrown damage
+setup("fighter-classic","Fighter",5);
+S.abilities.base={Strength:16,Dexterity:12,Constitution:14,Intelligence:10,Wisdom:10,Charisma:8};
+S.choices["Fighting Style:0"]="Thrown Weapon Fighting";
+S.equipment.inventory=[{name:"Handaxe",source:"PHB",cat:"Weapon",dmg:"1d6",dmgType:"S",weaponCat:"simple",wtype:"M",range:"20/60",props:["Light","Thrown"],qty:1,equipped:true}];
+checkTrue("  Thrown Weapon Fighting adds +2 (1d6+5 = Str3+2)",atkRow("Handaxe").indexOf("1d6+5")>=0);
+// Great Weapon Fighting shows as a note (can't fold into one number)
+setup("fighter-classic","Fighter",5);
+S.abilities.base={Strength:16,Dexterity:12,Constitution:14,Intelligence:10,Wisdom:10,Charisma:8};
+S.choices["Fighting Style:0"]="Great Weapon Fighting";S.equipment.inventory=[GREATSWORD];
+checkTrue("  Great Weapon Fighting shows a reroll note",atkRow("Greatsword").indexOf("reroll")>=0);
+// no style, no bonus
+setup("fighter-classic","Fighter",5);
+S.abilities.base={Strength:18,Dexterity:12,Constitution:14,Intelligence:10,Wisdom:10,Charisma:8};
+S.equipment.inventory=[LONGSWORD];
+checkTrue("  with no fighting style a Longsword is plain (1d8+4)",atkRow("Longsword").indexOf("1d8+4")>=0&&atkRow("Longsword").indexOf("Dueling")<0);
 
 // =====================================================================
 section("8. Data integrity");
