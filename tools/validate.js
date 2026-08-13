@@ -59,7 +59,7 @@ app=app.replace("populateLevels();showEdition();",
  "martialArtsDie:martialArtsDie,isMonkWeapon:isMonkWeapon,biggerDie:biggerDie,actionsCardHtml:actionsCardHtml,classOptions:classOptions,"+
  "profBlock:profBlock,profOpts:profOpts,customProfs:customProfs,"+
  "orphanProgressions:orphanProgressions,optProgMap:optProgMap,validChoiceKeys:validChoiceKeys,"+
- "fightingStyles:fightingStyles,hasStyle:hasStyle,"+
+ "fightingStyles:fightingStyles,hasStyle:hasStyle,renderRace:renderRace,"+
  "allRacialSpells:allRacialSpells,pickedRacialSpells:pickedRacialSpells,spellPicksAll:spellPicksAll,currentRace:currentRace,currentLineage:currentLineage,originShort:originShort,"+
  "defencesHtml:defencesHtml,defLabel:defLabel,defencesSummaryLines:defencesSummaryLines,"+
  "speciesLabel:speciesLabel,cleanLineageName:cleanLineageName,dcAbility:dcAbility,abilitySaveDc:abilitySaveDc,"+
@@ -1235,6 +1235,26 @@ setup("fighter-classic","Fighter",5);
 S.abilities.base={Strength:18,Dexterity:12,Constitution:14,Intelligence:10,Wisdom:10,Charisma:8};
 S.equipment.inventory=[LONGSWORD];
 checkTrue("  with no fighting style a Longsword is plain (1d8+4)",atkRow("Longsword").indexOf("1d8+4")>=0&&atkRow("Longsword").indexOf("Dueling")<0);
+
+// =====================================================================
+section("7ae. A race's skill choice is offered inside the trait that grants it");
+setup("fighter-classic","Fighter",5);S.race={name:"Leonin",source:"MOT"};S.raceLineage=null;S.raceChoices={};
+var lo=(window.CC_RACES.classic).filter(function(r){return r.name==="Leonin";})[0];
+checkTrue("  Leonin has a 4-skill choice",lo&&lo.skills.choose&&lo.skills.choose.from.length===4);
+C.renderRace();
+var rh=document.getElementById("raceDetail").innerHTML;
+check("  exactly one skill picker renders (no duplicate)",(rh.match(/data-group="race:skill"/g)||[]).length,1);
+var pk=rh.indexOf('data-group="race:skill"');
+var nm=rh.substring(rh.lastIndexOf('class="fx-name"',pk),pk).replace(/<[^>]*>/g," ");
+checkTrue("  it sits inside the Hunter's Instincts trait panel",nm.indexOf("Hunter's Instincts")>=0);
+checkTrue("  the picker offers all four skills",rh.substr(pk,500).indexOf("Athletics")>=0&&rh.substr(pk,500).indexOf("Survival")>=0);
+// choosing works and grants proficiency
+S.raceChoices["race:skill:0"]="Survival";
+checkTrue("  choosing one grants proficiency",!!C.proficientSkills()["Survival"]);
+// a race whose skill grant is 'any' (no describing trait) still offers a picker in the summary
+setup("fighter-classic","Fighter",5);S.race={name:"Half-Elf",source:"PHB"};S.raceLineage=null;S.raceChoices={};
+C.renderRace();
+checkTrue("  a race with an 'any skill' grant still offers a picker",document.getElementById("raceDetail").innerHTML.indexOf("race:skill")>=0);
 
 // =====================================================================
 section("8. Data integrity");

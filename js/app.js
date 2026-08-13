@@ -1036,6 +1036,18 @@
     var scAbility=(lin&&lin.scAbility)?lin.scAbility:race.scAbility;
     var traits=race.traits.concat(lin?lin.traits:[]);
     var pending=false;
+    // A race skill choice is granted by a named trait (Leonin's Hunter's Instincts). Find
+    // that trait so the picker can sit inside it, where the player reads about the choice,
+    // instead of under a generic "Skill proficiency" line in the summary.
+    var skillTrait=null;
+    if(skills.choose){
+      for(var ti=0;ti<traits.length;ti++){
+        var ttxt=plainTags(entryText(traits[ti].entries||"")).toLowerCase(),all=true;
+        if(ttxt.indexOf("proficien")<0)continue;
+        for(var si=0;si<skills.choose.from.length;si++){if(ttxt.indexOf(skills.choose.from[si].toLowerCase())<0){all=false;break;}}
+        if(all){skillTrait=traits[ti].name;break;}
+      }
+    }
 
     var s="";
     s+=line("Size",race.size||"—");
@@ -1058,7 +1070,7 @@
     if(race.armor.length)s+=line("Armor Proficiencies",race.armor.join(", "));
     if(race.tools.length)s+=line("Tool Proficiencies",race.tools.join(", "));
     if(skills.fixed.length)s+=line("Skill Proficiencies",skills.fixed.join(", "));
-    if(skills.choose){s+=raceSelectHtml("race:skill",skills.choose.from,skills.choose.count,"Skill proficiency");if(raceChoiceCount("race:skill",skills.choose.count)<skills.choose.count)pending=true;}
+    if(skills.choose&&!skillTrait){s+=raceSelectHtml("race:skill",skills.choose.from,skills.choose.count,"Skill proficiency");if(raceChoiceCount("race:skill",skills.choose.count)<skills.choose.count)pending=true;}
     if(skills.any){s+=raceSelectHtml("race:skillany",ALL_SKILLS.filter(function(x){return skills.fixed.indexOf(x)<0;}),skills.any,"Skill proficiency (any)");if(raceChoiceCount("race:skillany",skills.any)<skills.any)pending=true;}
     if(langs.fixed.length)s+=line("Languages",langs.fixed.join(", "));
     if(race.langNote)s+='<p class="prof-line tag-note">'+esc(race.langNote)+"</p>";
@@ -1098,7 +1110,12 @@
       html+=panelHtml("Draconic Ancestry","",1,"",aHtml+"</div>","race:ancestry:"+race.name+race.source,!cur);
     }
     traits.forEach(function(t){
-      html+=panelHtml(t.name,"",0,"",(t.entries||[]).map(renderEntry).join(""),"racetrait:"+race.name+race.source+t.name,false);
+      var tbody=(t.entries||[]).map(renderEntry).join(""),tch=0,tpend=false;
+      if(skills.choose&&t.name===skillTrait){    // host the skill picker inside its own trait
+        tbody+=raceSelectHtml("race:skill",skills.choose.from,skills.choose.count,"Choose your skill");
+        tch=skills.choose.count;tpend=raceChoiceCount("race:skill",skills.choose.count)<skills.choose.count;
+      }
+      html+=panelHtml(t.name,"",tch,"",tbody,"racetrait:"+race.name+race.source+t.name,tpend);
     });
 
     host.innerHTML=html;
