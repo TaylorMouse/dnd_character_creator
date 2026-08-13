@@ -58,8 +58,10 @@ app=app.replace("populateLevels();showEdition();",
  "fxAvailable:fxAvailable,fxActive:fxActive,fxTotals:fxTotals,fxDmgFor:fxDmgFor,concOptions:concOptions,acBreakdown:acBreakdown,"+
  "martialArtsDie:martialArtsDie,isMonkWeapon:isMonkWeapon,biggerDie:biggerDie,actionsCardHtml:actionsCardHtml,classOptions:classOptions,"+
  "profBlock:profBlock,profOpts:profOpts,customProfs:customProfs,"+
+ "orphanProgressions:orphanProgressions,optProgMap:optProgMap,validChoiceKeys:validChoiceKeys,"+
  "allRacialSpells:allRacialSpells,pickedRacialSpells:pickedRacialSpells,spellPicksAll:spellPicksAll,currentRace:currentRace,currentLineage:currentLineage,originShort:originShort,"+
  "defencesHtml:defencesHtml,defLabel:defLabel,defencesSummaryLines:defencesSummaryLines,"+
+ "speciesLabel:speciesLabel,cleanLineageName:cleanLineageName,dcAbility:dcAbility,abilitySaveDc:abilitySaveDc,"+
  "srcAbbr:srcAbbr,sourceName:sourceName,isHomebrew:isHomebrew,itemAllowed:itemAllowed,"+
  "rcCardHtml:rcCardHtml,rcWhen:rcWhen,defences:defences,expertiseSkills:expertiseSkills,skillBonus:skillBonus,passiveScore:passiveScore,"+
  "itemMechanics:itemMechanics,skillAdvantage:skillAdvantage};");
@@ -1102,6 +1104,87 @@ checkTrue("  ...and the custom note",lines.indexOf("Half from spells on a save")
 setup("wizard-classic","Wizard",1);S.customDefences=[];
 C.render();
 checkTrue("  a bare level-1 Wizard still shows the Defences card",_els["sheetPanel"].innerHTML.indexOf(">Defences<")>=0);
+
+// =====================================================================
+section("7z. Species label drops the disambiguating source code");
+check("  a lineage source suffix is stripped",C.cleanLineageName("Eladrin (MTF)"),"Eladrin");
+check("  ...and a longer code too",C.cleanLineageName("Longtooth (ERLW)"),"Longtooth");
+check("  a name with no source is left alone",C.cleanLineageName("High Elf"),"High Elf");
+setup("sorcerer-classic","Sorcerer",6);S.race={name:"Elf",source:"PHB"};S.raceLineage="Eladrin (MTF)";
+check("  a lineage shows as itself, not 'Elf (Eladrin (MTF))'",C.speciesLabel(),"Eladrin");
+setup("fighter-classic","Fighter",5);S.race={name:"Human",source:"PHB"};S.raceLineage=null;
+check("  a base species with no lineage shows its own name",C.speciesLabel(),"Human");
+setup("fighter-classic","Fighter",5);S.race=null;
+check("  no species chosen yields empty",C.speciesLabel(),"");
+
+// =====================================================================
+section("7aa. Supplement-expanded spells (classVariant) are selectable");
+// Fizban's adds Rime's Binding Ice to the Sorcerer/Wizard lists via classVariant, not the
+// core class list; it must still be offered.
+var rime=(window.CC_SPELLS||[]).filter(function(s){return s.name==="Rime's Binding Ice";})[0];
+checkTrue("  Rime's Binding Ice is in the spell data",!!rime);
+if(rime){
+  check("  it is a 2nd-level spell",rime.level,2);
+  checkTrue("  from Fizban's (FTD)",rime.source==="FTD");
+  checkTrue("  available to the Sorcerer (2014)",rime.cls.classic.indexOf("Sorcerer")>=0);
+  checkTrue("  ...and the Wizard",rime.cls.classic.indexOf("Wizard")>=0);
+  checkTrue("  ...in 2024 too",rime.cls.one.indexOf("Sorcerer")>=0);
+}
+setup("sorcerer-classic","Sorcerer",6);
+var so2=C.classSpellList(2,2).map(function(s){return s.name;});
+checkTrue("  a Sorcerer's level-2 list offers it",so2.indexOf("Rime's Binding Ice")>=0);
+checkTrue("  supplement spells broadly reached the lists",(window.CC_SPELLS||[]).filter(function(s){return s.source==="FTD";}).length>0);
+
+// =====================================================================
+section("7ab. Ability Save DC for every class (not just casters)");
+// Barbarian: Constitution, 8 + prof + Con mod = 14 at level 5 with Con 16 (matches the
+// original MPMB sheet Tedlen was built on).
+setup("barbarian-classic","Barbarian",5);
+S.abilities.base={Strength:15,Dexterity:14,Constitution:16,Intelligence:10,Wisdom:10,Charisma:8};
+check("  Barbarian DC ability is Constitution",C.dcAbility(),"Constitution");
+check("  Barbarian save DC (8+3+3)",C.abilitySaveDc(),14);
+// Monk keys its ki DC off Wisdom
+setup("monk-classic","Monk",5);
+S.abilities.base={Strength:10,Dexterity:16,Constitution:14,Intelligence:10,Wisdom:16,Charisma:8};
+check("  Monk DC ability is Wisdom",C.dcAbility(),"Wisdom");
+check("  Monk save DC (8+3+3)",C.abilitySaveDc(),14);
+// casters use their spellcasting ability
+setup("sorcerer-classic","Sorcerer",6);
+S.abilities.base={Strength:8,Dexterity:14,Constitution:14,Intelligence:10,Wisdom:10,Charisma:16};
+check("  Sorcerer DC ability is Charisma",C.dcAbility(),"Charisma");
+check("  Sorcerer save DC (8+3+3)",C.abilitySaveDc(),14);
+setup("wizard-classic","Wizard",5);
+check("  Wizard DC ability is Intelligence",C.dcAbility(),"Intelligence");
+// martial fallbacks
+setup("rogue-classic","Rogue",5);check("  Rogue DC ability is Dexterity",C.dcAbility(),"Dexterity");
+setup("fighter-classic","Fighter",5);check("  Fighter DC ability is Strength",C.dcAbility(),"Strength");
+
+// =====================================================================
+section("7ac. Leonin gets its own language; Rune Knight can pick runes");
+// a race's own language ("other") resolves to the name in its trait, not the literal "Other"
+function raceLangs(nm){var L=window.CC_RACES;for(var ed in L)for(var i=0;i<L[ed].length;i++)if(L[ed][i].name===nm)return L[ed][i].languages;return null;}
+var leo=raceLangs("Leonin");
+checkTrue("  Leonin lists Common and Leonin",leo&&leo.fixed.indexOf("Common")>=0&&leo.fixed.indexOf("Leonin")>=0);
+checkTrue("  ...and never the literal 'Other'",leo.fixed.indexOf("Other")<0);
+checkTrue("  Minotaur speaks Minotaur",raceLangs("Minotaur").fixed.indexOf("Minotaur")>=0);
+checkTrue("  a race with no named extra language gets a free choice",raceLangs("Tabaxi").any>=1);
+// a progression whose name is not a feature name still gets a picker
+setup("fighter-classic","Fighter",5);S.subclassName="Rune Knight";
+var rk=(S.fdata.subclasses||[]).filter(function(s){return s.name==="Rune Knight";})[0];
+var rkOrph=C.orphanProgressions(S.fdata,rk,C.optProgMap(S.fdata,rk));
+check("  Rune Knight exposes an orphan 'Runes' progression",rkOrph.length&&rkOrph[0].name,"Runes");
+check("  ...that first grants runes at level 3",rkOrph[0].level,3);
+C.render();
+var fh=document.getElementById("featureList").innerHTML;
+check("  the features page shows two rune dropdowns",(fh.match(/data-group="Runes"/g)||[]).length,2);
+checkTrue("  choosing runes is a valid, persisted choice",!!C.validChoiceKeys()["Runes:0"]&&!!C.validChoiceKeys()["Runes:1"]);
+// the same mechanism now covers Battle Master maneuvers
+setup("fighter-classic","Fighter",7);S.subclassName="Battle Master";
+var bm=(S.fdata.subclasses||[]).filter(function(s){return s.name==="Battle Master";})[0];
+check("  Battle Master's Maneuvers progression is picked up too",C.orphanProgressions(S.fdata,bm,C.optProgMap(S.fdata,bm))[0].name,"Maneuvers");
+// a normal same-named progression (Sorcerer Metamagic) is NOT treated as an orphan
+setup("sorcerer-classic","Sorcerer",6);
+check("  Metamagic (feature == progression) is not an orphan",C.orphanProgressions(S.fdata,null,C.optProgMap(S.fdata,null)).length,0);
 
 // =====================================================================
 section("8. Data integrity");

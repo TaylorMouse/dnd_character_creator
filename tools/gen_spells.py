@@ -69,11 +69,16 @@ def classes_for(spell):
     ent=LK.get(src,{}).get(nm)
     out={"classic":[],"one":[]}
     if not ent: return out
-    cl=ent.get("class",{})
-    for csrc,classes in cl.items():
+    def add(csrc,cname):
         ed="one" if csrc.upper()=="XPHB" else "classic"
-        for cname in classes:
-            if cname not in out[ed]: out[ed].append(cname)
+        if cname not in out[ed]: out[ed].append(cname)
+    # the class's core spell list
+    for csrc,classes in (ent.get("class") or {}).items():
+        for cname in classes: add(csrc,cname)
+    # spells a supplement adds to the whole class list (e.g. Fizban's puts Rime's Binding
+    # Ice on the Sorcerer/Wizard lists) — recorded as classVariant, keyed by class name
+    for csrc,cdict in (ent.get("classVariant") or {}).items():
+        for cname in cdict.keys(): add(csrc,cname)
     return out
 
 spells=[]

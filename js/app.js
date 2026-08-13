@@ -327,6 +327,11 @@
         for(var i=0;i<count;i++)keys[f.name+":"+i]=1;
       }
     });
+    orphanProgressions(fd,chosen,progMap).forEach(function(op){    // e.g. Rune Knight "Runes"
+      if(op.level>lvl)return;
+      var count=progAt(progMap[op.name].progression,lvl);
+      for(var i=0;i<count;i++)keys[op.name+":"+i]=1;
+    });
     if(chosen)chosen.features.forEach(function(f){
       if(f.level<=lvl&&tableChoiceCfg(fd.name,chosen.shortName,f.name))keys["tbl:"+f.name+":0"]=1;
     });
@@ -348,6 +353,23 @@
     (fd.optProgression||[]).forEach(function(p){m[p.name]=p;});
     if(chosen)(chosen.optProgression||[]).forEach(function(p){m[p.name]=p;});
     return m;
+  }
+  /* A choice-pool progression is normally hosted by a feature of the same name (Sorcerer's
+     Metamagic). Some are not: the Rune Knight's progression is "Runes" but its feature is
+     "Rune Knight", and a Battle Master's is "Maneuvers". Those need their own picker, placed
+     at the level they first grant a choice. */
+  function orphanProgressions(fd,chosen,progMap){
+    var names={};
+    (fd.classFeatures||[]).forEach(function(f){names[f.name]=1;});
+    if(chosen)(chosen.features||[]).forEach(function(f){names[f.name]=1;});
+    var out=[],pn;
+    for(pn in progMap){
+      if(names[pn]||!(fd.optionLists[pn]&&fd.optionLists[pn].length))continue;
+      var lv=99;for(var k in progMap[pn].progression){if(+k<lv)lv=+k;}
+      var isSub=!!(chosen&&(chosen.optProgression||[]).filter(function(p){return p.name===pn;}).length);
+      out.push({name:pn,level:lv,isSub:isSub});
+    }
+    return out;
   }
 
   function choiceSelectsHtml(groupKey,pool,count,label){
@@ -581,6 +603,11 @@
     var list=[];
     fd.classFeatures.forEach(function(f){list.push({level:f.level,name:f.name,entries:f.entries,optional:f.optional,gain:f.gainSubclassFeature,isSub:false,source:f.source});});
     if(chosen)chosen.features.forEach(function(f){list.push({level:f.level,name:f.name,entries:f.entries,isSub:true,source:chosen.source});});
+    // a picker for any pool whose progression has no like-named feature (Runes, Maneuvers…)
+    orphanProgressions(fd,chosen,progMap).forEach(function(op){
+      list.push({level:op.level,name:op.name,entries:["Choose from the "+op.name.toLowerCase()+" available to your "+(op.isSub?"subclass":"class")+"."],
+                 isSub:op.isSub,source:op.isSub?chosen.source:fd.source});
+    });
 
     var shown=list.filter(function(f){return f.level<=lvl;}).sort(function(a,b){return a.level-b.level||(a.isSub?1:0)-(b.isSub?1:0);});
     var higher=list.filter(function(f){return f.level>lvl;}).length;
@@ -883,6 +910,16 @@
   function currentLineage(race){
     if(!race||!state.raceLineage)return null;
     return race.lineages.filter(function(l){return l.name===state.raceLineage;})[0]||null;
+  }
+  // Lineage names carry a " (SRC)" suffix so the dropdown can tell three Eladrins apart;
+  // that source code is noise on the sheet, so strip it for display.
+  function cleanLineageName(nm){return String(nm||"").replace(/\s*\([A-Z0-9]{2,6}\)\s*$/,"").trim();}
+  // The species label to show: the chosen lineage (e.g. "Eladrin") when there is one,
+  // otherwise the base species (e.g. "Human").
+  function speciesLabel(){
+    var race=currentRace(),lin=race?currentLineage(race):null;
+    if(!race)return "";
+    return lin?cleanLineageName(lin.name):race.name;
   }
   function raceChoiceCount(group,count){var n=0;for(var i=0;i<count;i++)if(state.raceChoices[group+":"+i])n++;return n;}
   /* Species that grant a *choice* of spell (Astral Elf's Astral Fire — one of dancing
@@ -1540,6 +1577,20 @@
 
   /* ---------- spells ---------- */
   function profBonus(){return Math.floor((state.level-1)/4)+2;}
+  /* The ability a class uses for its save DCs. Spellcasters use their spellcasting
+     ability; martial classes key their DC-bearing features off a set ability — the Monk's
+     ki DC is Wisdom, and the MPMB sheet uses Constitution for Barbarian, Dexterity for
+     Rogue, Strength for Fighter. */
+  var DC_ABILITY_MARTIAL={Barbarian:"Constitution",Monk:"Wisdom",Rogue:"Dexterity",Fighter:"Strength"};
+  function dcAbility(){
+    var info=spellInfo();
+    if(info&&info.ability)return info.ability;
+    return DC_ABILITY_MARTIAL[state.className]||"";
+  }
+  function abilitySaveDc(){
+    var ab=dcAbility();
+    return ab?8+profBonus()+abMod(totalScore(ab)):null;
+  }
   function maxSpellLevel(caster,L){
     switch(caster){
       case "full":return Math.min(9,Math.ceil(L/2));
@@ -2565,7 +2616,7 @@
     var race=currentRace(),lin=race?currentLineage(race):null,mhp=maxHP();
     // current HP tracks max until the player explicitly edits it
     if(!state.sheet.hpEdited)state.sheet.hpCurrent=mhp;
-    var sub=((race?race.name+(lin?" ("+lin.name+")":""):"")+" "+state.className+" "+state.level).trim();
+    var sub=((speciesLabel())+" "+state.className+" "+state.level).trim();
     if(state.subclassName)sub+="  ·  "+state.subclassName;
 
     var html='<div class="sheet-head"><div class="sheet-portrait" id="sheetPortrait">'+(state.portrait?'<img src="'+state.portrait+'">':"&#9670;")+'</div><div><div class="sheet-name">'+esc(state.name||"Unnamed")+'</div><div class="sheet-sub">'+esc(sub)+"</div></div>"+
@@ -3172,7 +3223,7 @@
     setT("CharacterName",state.name);
     setT("ClassLevel",state.className+" "+state.level+(state.subclassName?" ("+state.subclassName+")":""));
     setT("Background",state.bgIsCustom?state.bgCustomName:(currentBg()?currentBg().name:""));
-    setT("Race ",race?race.name+(lin?" ("+lin.name+")":""):"");
+    setT("Race ",speciesLabel());
     setT("Alignment",state.details.alignment);
     setT("XP",state.sheet.xp);setT("Inspiration",state.sheet.inspiration?"Yes":"");
     ABILITIES.forEach(function(a){var t=totalScore(a);setT(F.abilityFields[a],t);setT(F.abilityMods[a],modStr(abMod(t)));});

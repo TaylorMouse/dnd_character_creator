@@ -49,13 +49,30 @@ def parse_speed(sp):
     if sp.get("fly") is True: pass
     return ", ".join(parts) if parts else ""
 
-def parse_langs(arr):
+def language_from_entries(entries):
+    # 5etools marks a race's own language as {"other": true}; the specific name lives in the
+    # "Languages" trait ("...Common and Leonin."). Pull the capitalised word after "and".
+    for e in entries or []:
+        if isinstance(e, dict) and e.get("name") == "Languages":
+            txt = " ".join(x for x in e.get("entries", []) if isinstance(x, str))
+            m = re.findall(r"\band ([A-Z][a-zA-Z']+)", txt)
+            for w in m:
+                if w != "Common":
+                    return w
+    return None
+
+def parse_langs(arr, entries=None):
     fixed=[]; anyStd=0; anyN=0
     for blk in arr or []:
         if not isinstance(blk,dict): continue
         for k,v in blk.items():
             if k=="anyStandard": anyStd+=v
             elif k=="any": anyN+=v
+            elif k=="other" and v is True:
+                # the race's own language: use its name if the trait states one, else "one of choice"
+                spec=language_from_entries(entries)
+                if spec: fixed.append(spec)
+                else: anyN+=1
             elif v is True: fixed.append(tcase(k))
     return {"fixed":fixed,"anyStandard":anyStd,"any":anyN}
 
@@ -179,7 +196,7 @@ def base_obj(r):
     # 5etools marks MPMM/VRGR-style species with `lineage`; their ability increases and
     # languages are not stored per race because the book states them once:
     # "Common and one other language that you and your DM agree is appropriate".
-    langs = parse_langs(r.get("languageProficiencies"))
+    langs = parse_langs(r.get("languageProficiencies"), r.get("entries"))
     lineage = bool(r.get("lineage"))
     lang_note = ""
     if lineage and not r.get("languageProficiencies"):
