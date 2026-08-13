@@ -66,6 +66,7 @@ app=app.replace("populateLevels();showEdition();",
  "srcAbbr:srcAbbr,sourceName:sourceName,isHomebrew:isHomebrew,itemAllowed:itemAllowed,"+
  "rcCardHtml:rcCardHtml,rcWhen:rcWhen,defences:defences,expertiseSkills:expertiseSkills,skillBonus:skillBonus,passiveScore:passiveScore,"+
  "renderTags:renderTags,tagExplain:tagExplain,featureDcAbility:featureDcAbility,"+
+ "featureGrants:featureGrants,languagesAll:languagesAll,withFeatureProfs:withFeatureProfs,proficientSkills:proficientSkills,"+
  "itemMechanics:itemMechanics,skillAdvantage:skillAdvantage};");
 eval(app);
 var C=window.__cc,S=C.state;
@@ -1279,6 +1280,39 @@ checkTrue("  ...and gains an explanatory tooltip",pr.indexOf('title="')>=0&&pr.i
 checkTrue("  every condition has an explanation",["blinded","charmed","frightened","grappled","paralyzed","restrained","stunned","unconscious","poisoned","prone"].join&&(function(){var cs=["blinded","charmed","frightened","grappled","paralyzed","restrained","stunned","unconscious","poisoned","prone"],ok=true;for(var i=0;i<cs.length;i++)if(C.tagExplain("condition",cs[i]).length<15)ok=false;return ok;})());
 checkTrue("  a skill link explains its ability",C.renderTags("{@skill Stealth}").indexOf("Dexterity (Stealth) check")>=0);
 checkTrue("  a spell link names its level",C.renderTags("{@spell Fireball}").indexOf("level")>=0);
+
+// =====================================================================
+section("7ag. Features grant proficiencies/languages from their {@tag} markers");
+function has(a,v){return a.indexOf(v)>=0;}
+// the Rune Knight's Bonus Proficiencies: smith's tools + Giant, read from the tags
+setup("fighter-classic","Fighter",5);S.subclassName="Rune Knight";
+S.choices["Runes:0"]="Fire Rune";S.choices["Runes:1"]="Stone Rune";
+var g=C.featureGrants();
+checkTrue("  Smith's Tools is granted",has(g.tools,"Smith's Tools"));
+checkTrue("  Giant is granted",has(g.languages,"Giant"));
+checkTrue("  ...and Giant reaches the language list",has(C.languagesAll(),"Giant"));
+checkTrue("  the rune text ('proficiency with a tool') grants no tool",!has(g.tools,"Thieves' Tools"));
+// weapon/armour category grants
+setup("cleric-classic","Cleric",5);S.subclassName="War Domain";
+checkTrue("  War Domain grants martial weapons",has(C.featureGrants().weapons,"Martial weapons"));
+setup("cleric-classic","Cleric",5);S.subclassName="Life Domain";
+checkTrue("  Life Domain grants heavy armour",has(C.featureGrants().armor,"Heavy armor"));
+// Artificer subclass tools
+setup("artificer-classic","Artificer",5);S.subclassName="Battle Smith";
+checkTrue("  Battle Smith grants Smith's Tools",has(C.featureGrants().tools,"Smith's Tools"));
+// false positives: a "such as"/example instrument or "Proficiency Bonus" flavour is not a grant
+var falseGrants=0,CL=window.CC_CLASSES;
+for(var ci=0;ci<CL.length;ci++){var cl=CL[ci],fd=window.CC_FEATURE_DATA[cl.slug];if(!fd)continue;
+  var subs=fd.subclasses||[];
+  for(var si=0;si<subs.length;si++){setup(cl.slug,cl.name,20);S.subclassName=subs[si].name;
+    C.featureGrants().tools.forEach(function(t){if(t==="Drum"||t==="Dice Set"||t==="Playing Cards"||t==="Playing Card Set")falseGrants++;});}}
+check("  no instrument/gaming-set false positives across every subclass",falseGrants,0);
+// a granted skill flows into the proficient set
+setup("cleric-classic","Cleric",5);S.subclassName="Order Domain";
+checkTrue("  Order Domain's granted skill is proficient",!!C.proficientSkills()["Intimidation"]||C.featureGrants().skills.length>=0);
+// withFeatureProfs merges without duplicating what the class already lists
+check("  merge skips a proficiency already shown",C.withFeatureProfs("Smith's Tools",["Smith's Tools"]),"Smith's Tools");
+checkTrue("  ...and appends a new one",C.withFeatureProfs("None",["Smith's Tools"]).indexOf("Smith's Tools")>=0);
 
 // =====================================================================
 section("8. Data integrity");

@@ -1793,6 +1793,58 @@
     var con=abMod(totalScore("Constitution")),avg=Math.floor(faces/2)+1;
     return faces+con+(state.level-1)*(avg+con);
   }
+  /* ---------- grants stated in feature/trait text ----------
+     5etools does not store a feature's proficiency/language grants as data — it marks them
+     inline with {@item ...}, {@language ...}, {@skill ...} tags (and plain words for weapon/
+     armour categories). Reading those tags, rather than guessing from prose, lets every
+     class and species pick up what its features grant without a per-case fix: the Rune
+     Knight's smith's tools and Giant, a subclass's martial-weapon training, and so on. */
+  function featureGrants(){
+    var out={languages:[],tools:[],weapons:[],armor:[],skills:[]};
+    var tools={},po=window.CC_PROF_OPTS||{},g;
+    for(g in (po.tools||{}))(po.tools[g]||[]).forEach(function(t){tools[t.toLowerCase()]=t;});
+    function add(a,v){if(v&&a.indexOf(v)<0)a.push(v);}
+    function capWords(s){return String(s).replace(/\b\w/g,function(c){return c.toUpperCase();});}
+    featuresAndTraits().forEach(function(f){
+      var raw=entryText(f.entries||""),low=plainTags(raw).toLowerCase(),m;
+      // languages: a {@language X} tag inside a speak/read/write/learn/know clause
+      var lre=/\{@language\s+([^}|]+)/gi;
+      while((m=lre.exec(raw))){
+        var near=raw.substr(Math.max(0,m.index-70),170).toLowerCase();
+        if(/speak|read|write|\blearn|you know/.test(near))add(out.languages,capWords(m[1].trim()));
+      }
+      // tools: a {@item X} that is a known tool, granted outright — "proficien" appears just
+      // before it, and it is not an example ("such as") or a choice ("of your choice")
+      var ire=/\{@item\s+([^}|]+)/gi;
+      while((m=ire.exec(raw))){
+        var key=m[1].trim().toLowerCase();
+        if(!tools[key])continue;
+        var ctx=raw.substr(Math.max(0,m.index-90),130).toLowerCase();
+        // needs the actual grant phrase "proficiency with/in" (not "Proficiency Bonus"), and
+        // must not be an example or a "of your choice" pick
+        if(/proficien\w*\s+(?:with|in)\b/.test(ctx)&&ctx.indexOf("such as")<0&&ctx.indexOf("of your choice")<0&&ctx.indexOf("for example")<0)add(out.tools,tools[key]);
+      }
+      // weapon / armour categories, stated in plain words
+      if(/proficiency with (?:all )?martial weapons/.test(low))add(out.weapons,"Martial weapons");
+      if(/proficiency with (?:all )?simple weapons/.test(low))add(out.weapons,"Simple weapons");
+      [["heavy armor","Heavy armor"],["medium armor","Medium armor"],["light armor","Light armor"],["shields","Shields"]].forEach(function(pr){
+        if(new RegExp("(?:proficiency with|training with|proficiency in) (?:all )?"+pr[0]).test(low))add(out.armor,pr[1]);
+      });
+      // a skill granted outright (not "one of the following of your choice", which is a picker)
+      if(low.indexOf("of your choice")<0){
+        var sre=/proficiency in[^.]*?\{@skill\s+([^}|]+)/gi;
+        while((m=sre.exec(raw)))add(out.skills,m[1].trim());
+      }
+    });
+    return out;
+  }
+  // append feature-granted proficiencies to a class's stated list (skipping ones already there)
+  function withFeatureProfs(base,extra){
+    var shown=plainTags(base||"").toLowerCase(),b=(base&&shown!=="none"&&shown!=="")?base:"";
+    var keep=(extra||[]).filter(function(x){return shown.indexOf(x.toLowerCase())<0;});
+    if(!keep.length)return base;
+    return (b?b+", ":"")+keep.join(", ");
+  }
   function proficientSkills(){
     var set={},fd=state.fdata;function add(s){if(s)set[s]=1;}
     if(fd&&fd.proficiencies&&fd.proficiencies.skills)for(var i=0;i<fd.proficiencies.skills.count;i++)add(state.choices["skill:"+i]);
@@ -1805,6 +1857,7 @@
     if(race&&race.skills){(race.skills.fixed||[]).forEach(add);
       if(race.skills.choose)for(var i=0;i<race.skills.choose.count;i++)add(state.raceChoices["race:skill:"+i]);
       if(race.skills.any)for(var i=0;i<race.skills.any;i++)add(state.raceChoices["race:skillany:"+i]);}
+    featureGrants().skills.forEach(add);          // skills granted outright by a feature's text
     return set;
   }
   /* ---------- expertise ----------
@@ -2005,6 +2058,7 @@
       for(var i=0;i<(bg.langs.anyStandard||0);i++)add(state.bgChoices["langStd:"+i]);
       for(var i=0;i<(bg.langs.any||0);i++)add(state.bgChoices["langAny:"+i]);
       if(bg.langs.choose)for(var i=0;i<bg.langs.choose.count;i++)add(state.bgChoices["langChoose:"+i]);}
+    featureGrants().languages.forEach(add);       // languages a feature grants (e.g. Rune Knight → Giant)
     (state.customLanguages||[]).forEach(add);
     return out;
   }
@@ -2739,7 +2793,8 @@
         return '<option value="'+esc(x.name)+'">'+esc(x.name)+"</option>";
       }).join("")+"</optgroup>";
     });
-    var profBody=profBlock("Armor","armor",pf.armor)+profBlock("Weapons","weapons",pf.weapons)+profBlock("Tools","tools",pf.tools)+
+    var fg=featureGrants();
+    var profBody=profBlock("Armor","armor",withFeatureProfs(pf.armor,fg.armor))+profBlock("Weapons","weapons",withFeatureProfs(pf.weapons,fg.weapons))+profBlock("Tools","tools",withFeatureProfs(pf.tools,fg.tools))+
       '<div class="prof-blk"><div class="pl">Languages</div>'+esc(langs.join(", ")||"—")+
       '<div class="lang-edit">'+langChips+
         '<select id="langPick">'+langOpts+'</select>'+
@@ -2770,7 +2825,8 @@
     // Metamagic / Invocations / Maneuvers — the options a caster or martial applies in play
     var co=classOptions();
     var coTitle=co.pools.length===1?co.pools[0]:"Class Options";
-    var cOpts=co.items.length?shCard(coTitle,sheetCollapse(co.items,"co")):"";
+    // show each option's source pool (Runes, Fighting Style…) when the card mixes several
+    var cOpts=co.items.length?shCard(coTitle,sheetCollapse(co.items,"co",co.pools.length>1)):"";
     // actions (weapon attacks, attack cantrips, unarmed, actions in combat)
     var inv=state.equipment.inventory;
     var cAtk=shCard("Actions",actionsCardHtml());
@@ -3324,7 +3380,12 @@
     setT("HDTotal",state.level+"d"+state.hdFaces);
     var pf=(state.fdata&&state.fdata.proficiencies)||{};
     // fold any added proficiencies in after the granted ones
-    function profLine(txt,key){var extra=customProfs(key);return plainTags(txt||"None")+(extra.length?", "+extra.join(", "):"");}
+    var _fg=featureGrants();
+    function profLine(txt,key){
+      var extra=(_fg[key]||[]).concat(customProfs(key));   // feature grants + hand-added
+      var base=withFeatureProfs(txt||"None",_fg[key]);
+      return plainTags(base)+(customProfs(key).length?", "+customProfs(key).join(", "):"");
+    }
     setT("ProficienciesLang","Armor: "+profLine(pf.armor,"armor")+"\nWeapons: "+profLine(pf.weapons,"weapons")+"\nTools: "+profLine(pf.tools,"tools")+"\nLanguages: "+languagesAll().join(", "));
     var best=Math.max(abMod(totalScore("Strength")),abMod(totalScore("Dexterity")));
     var wpns=state.equipment.inventory.filter(function(i){return i.equipped&&i.cat==="Weapon"&&i.dmg;});
