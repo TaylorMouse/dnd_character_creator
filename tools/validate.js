@@ -1203,8 +1203,12 @@ checkTrue("  Dueling adds +2 to a one-handed melee weapon (1d8+6)",atkRow("Longs
 checkTrue("  ...and names the source",atkRow("Longsword").indexOf("Dueling")>=0);
 S.equipment.inventory=[GREATSWORD];
 checkTrue("  Dueling does not apply to a two-handed weapon (2d6+4)",atkRow("Greatsword").indexOf("2d6+4")>=0&&atkRow("Greatsword").indexOf("Dueling")<0);
-S.equipment.inventory=[LONGSWORD,SHORTSWORD];
-checkTrue("  Dueling is off while a second melee weapon is wielded",atkRow("Longsword").indexOf("Dueling")<0);
+// each attack row is "if you wield this weapon", so a one-handed melee weapon keeps Dueling
+// even when another weapon is also in the loadout (you switch between them); the note reminds
+S.equipment.inventory=[LONGSWORD,GREATSWORD];
+checkTrue("  a one-handed weapon keeps Dueling alongside a spare two-hander",atkRow("Longsword").indexOf("1d8+6")>=0);
+checkTrue("  ...the two-handed spare still gets none",atkRow("Greatsword").indexOf("Dueling")<0);
+checkTrue("  ...and the note states the condition",atkRow("Longsword").indexOf("wielding it alone")>=0);
 // Archery: +2 to ranged attack rolls
 setup("fighter-classic","Fighter",5);
 S.abilities.base={Strength:10,Dexterity:16,Constitution:14,Intelligence:10,Wisdom:10,Charisma:8};

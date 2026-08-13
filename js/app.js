@@ -2468,9 +2468,6 @@
     var out=[],i,v;for(i=0;i<20;i++){v=state.choices["Fighting Style:"+i];if(v&&out.indexOf(v)<0)out.push(v);}return out;
   }
   function hasStyle(nm){var s=fightingStyles(),i;for(i=0;i<s.length;i++)if(s[i].indexOf(nm)>=0)return true;return false;}
-  function equippedMeleeCount(){
-    var n=0;state.equipment.inventory.forEach(function(it){if(it.cat==="Weapon"&&it.equipped){var w=resolveWeapon(it);if(w&&w.wtype!=="R")n++;}});return n;
-  }
   function scaledDie(sc,L){var best="",bl=-1;for(var k in sc){var n=+k;if(n<=L&&n>bl){bl=n;best=sc[k];}}return best;}
   function capital(s){return s?s.charAt(0).toUpperCase()+s.slice(1):"";}
   function actionsCardHtml(){
@@ -2513,7 +2510,10 @@
       var usesStr=melee&&(!useDex||strM>=dexM);
       // fighting-style bonuses to this weapon
       var styleDmg=0,styleHit=0,styleNotes=[];
-      if(hasStyle("Dueling")&&melee&&!twoH&&equippedMeleeCount()===1){styleDmg+=2;styleNotes.push("+2 Dueling");}
+      // Dueling applies to a one-handed melee weapon while it's the only weapon you hold;
+      // each row is "if you attack with this", so it shows on every one-handed melee weapon
+      // (not two-handed) with a reminder of the condition
+      if(hasStyle("Dueling")&&melee&&!twoH){styleDmg+=2;styleNotes.push("+2 Dueling (wielding it alone)");}
       if(hasStyle("Thrown Weapon Fighting")&&thrown&&melee){styleDmg+=2;styleNotes.push("+2 Thrown Weapon Fighting");}
       if(hasStyle("Archery")&&!melee){styleHit+=2;styleNotes.push("+2 Archery (to hit)");}
       if(hasStyle("Great Weapon Fighting")&&melee&&(twoH||versatile))styleNotes.push("reroll 1s & 2s (Great Weapon Fighting)");
