@@ -65,6 +65,7 @@ app=app.replace("populateLevels();showEdition();",
  "speciesLabel:speciesLabel,cleanLineageName:cleanLineageName,dcAbility:dcAbility,abilitySaveDc:abilitySaveDc,"+
  "srcAbbr:srcAbbr,sourceName:sourceName,isHomebrew:isHomebrew,itemAllowed:itemAllowed,"+
  "rcCardHtml:rcCardHtml,rcWhen:rcWhen,defences:defences,expertiseSkills:expertiseSkills,skillBonus:skillBonus,passiveScore:passiveScore,"+
+ "renderTags:renderTags,tagExplain:tagExplain,featureDcAbility:featureDcAbility,"+
  "itemMechanics:itemMechanics,skillAdvantage:skillAdvantage};");
 eval(app);
 var C=window.__cc,S=C.state;
@@ -1259,6 +1260,25 @@ checkTrue("  choosing one grants proficiency",!!C.proficientSkills()["Survival"]
 setup("fighter-classic","Fighter",5);S.race={name:"Half-Elf",source:"PHB"};S.raceLineage=null;S.raceChoices={};
 C.renderRace();
 checkTrue("  a race with an 'any skill' grant still offers a picker",document.getElementById("raceDetail").innerHTML.indexOf("race:skill")>=0);
+
+// =====================================================================
+section("7af. Feature save DC ability, and rules-link tooltips");
+// the save DC ability is read from feature text: a Rune Knight (and Leonin) use Constitution
+setup("fighter-classic","Fighter",5);S.subclassName="Rune Knight";
+S.choices["Runes:0"]="Fire Rune";S.choices["Runes:1"]="Stone Rune";
+check("  Rune Knight's save DC ability comes from the feature text",C.dcAbility(),"Constitution");
+S.abilities.base={Strength:16,Dexterity:12,Constitution:16,Intelligence:10,Wisdom:10,Charisma:8};
+check("  ...and the DC computes (8 + 3 + 3)",C.abilitySaveDc(),14);
+setup("fighter-classic","Fighter",5);check("  a plain Fighter falls back to Strength",C.dcAbility(),"Strength");
+setup("sorcerer-classic","Sorcerer",6);check("  a caster still uses its spellcasting ability",C.dcAbility(),"Charisma");
+// rules links carry a plain-language tooltip and keep the visible word
+setup("wizard-classic","Wizard",5);
+var pr=C.renderTags("A target is knocked {@condition prone}.");
+checkTrue("  a condition link keeps its word",pr.indexOf(">prone<")>=0);
+checkTrue("  ...and gains an explanatory tooltip",pr.indexOf('title="')>=0&&pr.indexOf("stand up")>=0);
+checkTrue("  every condition has an explanation",["blinded","charmed","frightened","grappled","paralyzed","restrained","stunned","unconscious","poisoned","prone"].join&&(function(){var cs=["blinded","charmed","frightened","grappled","paralyzed","restrained","stunned","unconscious","poisoned","prone"],ok=true;for(var i=0;i<cs.length;i++)if(C.tagExplain("condition",cs[i]).length<15)ok=false;return ok;})());
+checkTrue("  a skill link explains its ability",C.renderTags("{@skill Stealth}").indexOf("Dexterity (Stealth) check")>=0);
+checkTrue("  a spell link names its level",C.renderTags("{@spell Fireball}").indexOf("level")>=0);
 
 // =====================================================================
 section("8. Data integrity");

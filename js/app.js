@@ -108,6 +108,39 @@
   /* ---------- entry / tag renderer ---------- */
   function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
   function atkText(code){var m={"mw":"Melee Weapon Attack:","rw":"Ranged Weapon Attack:","mw,rw":"Melee or Ranged Weapon Attack:","ms":"Melee Spell Attack:","rs":"Ranged Spell Attack:","ms,rs":"Melee or Ranged Spell Attack:"};return m[code]||"Attack:";}
+  // short rules for the conditions, so a {@condition ...} link explains itself on hover
+  var CONDITION_INFO={
+    blinded:"Blinded: can't see, auto-fails sight checks; attacks against it have advantage, its own have disadvantage.",
+    charmed:"Charmed: can't attack the charmer; the charmer has advantage on social checks with it.",
+    deafened:"Deafened: can't hear and auto-fails hearing checks.",
+    exhaustion:"Exhaustion: stacking penalties by level (disadvantage, half speed, and worse; 6 = death).",
+    frightened:"Frightened: disadvantage on checks and attacks while the source is in sight, and can't move closer to it.",
+    grappled:"Grappled: speed 0; ends if the grappler is incapacitated or you're moved away.",
+    incapacitated:"Incapacitated: can't take actions or reactions.",
+    invisible:"Invisible: can't be seen unaided; attacks against it have disadvantage, its own have advantage.",
+    paralyzed:"Paralyzed: incapacitated, can't move or speak, auto-fails Str and Dex saves; hits from within 5 ft are crits.",
+    petrified:"Petrified: turned to solid substance; incapacitated, resistant to all damage, immune to poison and disease.",
+    poisoned:"Poisoned: disadvantage on attack rolls and ability checks.",
+    prone:"Prone: disadvantage on attacks; melee attacks against it have advantage, ranged have disadvantage; half your speed to stand up.",
+    restrained:"Restrained: speed 0; disadvantage on attacks and Dex saves; attacks against it have advantage.",
+    stunned:"Stunned: incapacitated, can't move, auto-fails Str and Dex saves; attacks against it have advantage.",
+    unconscious:"Unconscious: incapacitated and prone, drops what it holds, auto-fails Str and Dex saves; hits from within 5 ft are crits."
+  };
+  // a plain-language hint for a rules link, shown on hover
+  function tagExplain(tag,key){
+    var k=String(key||"").toLowerCase();
+    if(tag==="condition"||tag==="status")return CONDITION_INFO[k]||("Condition: "+capital(k));
+    if(tag==="skill"){var ab=SKILL_ABILITY[key]||SKILL_ABILITY[capital(k)];return ab?ab+" ("+key+") check":"Skill: "+key;}
+    if(tag==="spell"){var s=spellByName(key);return s?((s.level===0?"Cantrip":ordinal(s.level)+"-level")+" "+(s.school||"")+" spell"):"Spell: "+key;}
+    if(tag==="sense")return "Sense: "+capital(k);
+    if(tag==="action")return "Action in combat: "+key;
+    if(tag==="item")return "Item: "+key;
+    if(tag==="disease")return "Disease: "+key;
+    if(tag==="hazard")return "Hazard: "+key;
+    if(tag==="creature")return "Creature: "+key;
+    return "";
+  }
+  function linkSpan(txt,title){return '<span class="tag-link"'+(title?' title="'+esc(title)+'"':"")+">"+txt+"</span>";}
   function tagHtml(tag,content){
     var p=content.split("|"),txt;
     switch(tag){
@@ -126,11 +159,11 @@
       case"recharge":return"(Recharge "+(p[0]||"6")+")";
       case"atk":return"<em>"+atkText(p[0])+"</em> ";
       case"filter":case"book":case"quickref":case"adventure":case"footnote":case"area":
-        return'<span class="tag-link">'+p[0]+"</span>";
+        return linkSpan(p[0],"");
       case"deity":  // name|pantheon|source|display — display is 4th, not 3rd
-        txt=(p[3]&&p[3]!=="")?p[3]:p[0];return'<span class="tag-link">'+txt+"</span>";
+        txt=(p[3]&&p[3]!=="")?p[3]:p[0];return linkSpan(txt,"");
       default:
-        txt=(p.length>=3&&p[2])?p[2]:p[0];return'<span class="tag-link">'+txt+"</span>";
+        txt=(p.length>=3&&p[2])?p[2]:p[0];return linkSpan(txt,tagExplain(tag,p[0]));
     }
   }
   function renderTags(s){
@@ -1600,10 +1633,25 @@
      ki DC is Wisdom, and the MPMB sheet uses Constitution for Barbarian, Dexterity for
      Rogue, Strength for Fighter. */
   var DC_ABILITY_MARTIAL={Barbarian:"Constitution",Monk:"Wisdom",Rogue:"Dexterity",Fighter:"Strength"};
+  // A save DC stated in a feature ("8 + your proficiency bonus + your Constitution modifier")
+  // is authoritative — the Rune Knight's runes and Leonin's Daunting Roar use Constitution,
+  // a Monk's ki uses Wisdom. "X or Y modifier" (Battle Master) resolves to the better one.
+  function featureDcAbility(){
+    var found=null,AB="Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma";
+    var re=new RegExp("8\\s*\\+\\s*your proficiency bonus\\s*\\+\\s*your ("+AB+")(?:\\s+or\\s+("+AB+"))? modifier","i");
+    featuresAndTraits().forEach(function(f){
+      if(found)return;
+      var m=re.exec(plainTags(entryText(f.entries||"")));
+      if(!m)return;
+      found=(m[2]&&abMod(totalScore(m[2]))>abMod(totalScore(m[1])))?m[2]:m[1];
+      found=found.charAt(0).toUpperCase()+found.slice(1).toLowerCase();
+    });
+    return found;
+  }
   function dcAbility(){
     var info=spellInfo();
-    if(info&&info.ability)return info.ability;
-    return DC_ABILITY_MARTIAL[state.className]||"";
+    if(info&&info.ability)return info.ability;        // casters: spellcasting ability
+    return featureDcAbility()||DC_ABILITY_MARTIAL[state.className]||"";  // else a feature's stated DC, else the class default
   }
   function abilitySaveDc(){
     var ab=dcAbility();
@@ -2658,6 +2706,7 @@
 
     var html='<div class="sheet-head"><div class="sheet-portrait" id="sheetPortrait">'+(state.portrait?'<img src="'+state.portrait+'">':"&#9670;")+'</div><div><div class="sheet-name">'+esc(state.name||"Unnamed")+'</div><div class="sheet-sub">'+esc(sub)+"</div></div>"+
       '<div class="sheet-top">'+topStat("+"+prof,"Prof Bonus",profWhy())+topStat(esc(speedText()),"Speed",speedWhy())+topStat(modStr(init),"Initiative",initWhy())+acStatHtml(ac)+
+      (abilitySaveDc()!=null?topStat(abilitySaveDc(),"Save DC",dcAbility()+" save DC = 8 + proficiency ("+prof+") + "+dcAbility()+" modifier ("+modStr(abMod(totalScore(dcAbility())))+"). Enemies roll against this for your class and racial abilities that force a save."):"")+
       '<div class="top-stat insp-box" id="inspBox"><div class="tv">'+(state.sheet.inspiration?ICON.starOn:ICON.star)+'</div><div class="tl">Inspiration</div></div>'+
       '<div class="top-stat sheet-hp"><div class="tv"><input type="number" id="hpCur" value="'+esc(state.sheet.hpCurrent)+'"> / '+(mhp==null?"—":mhp)+'</div><div class="tl">Hit Points</div></div>'+
       '<div class="top-stat"><div class="tv"><input type="number" id="hpTemp" class="stat-inp" value="'+esc(state.sheet.hpTemp||"")+'"></div><div class="tl">Temp HP</div></div>'+

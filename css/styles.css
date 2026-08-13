@@ -154,7 +154,11 @@ textarea{resize:vertical}
 .fx-body ul{margin:0 0 10px 18px;padding:0}
 .fx-body li{margin:2px 0}
 .sub-h{font-weight:800}
-.tag-link{color:var(--link)}
+/* rules links (conditions, spells, skills…): a softer blue, dotted underline where an
+   explanation is available on hover */
+.tag-link{color:#3576d4}
+.tag-link[title]{border-bottom:1px dotted currentColor;cursor:help}
+body.dark .tag-link{color:#8fb6ec}
 .tag-roll{color:var(--roll);font-weight:600}
 .tag-dmg{color:var(--accent);font-weight:700}
 .tag-note{font-style:italic;color:var(--muted)}
