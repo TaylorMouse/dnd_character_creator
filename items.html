@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Item Reference &middot; D&D</title>
+<link rel="icon" href="resources/favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="icon" type="image/png" sizes="32x32" href="resources/favicon-32.png">
+<script src="resources/data-items.js"></script>
+<script src="resources/data-items-variants.js"></script>
+<script src="resources/data-sources.js"></script>
+<link rel="stylesheet" href="css/styles.css">
+<style>
+/* ---- item reference page (shares the other reference pages' look) ---- */
+.sp-wrap{max-width:none;margin:0;padding:18px 26px 60px}
+.sp-top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+.sp-top h1{font-size:24px;margin:0;color:var(--accent)}
+.sp-top .sp-sub{color:var(--muted);font-size:13px}
+.sp-top .sp-spacer{flex:1}
+.sp-top a.sp-back{color:var(--accent2);font-weight:700;font-size:14px;text-decoration:none}
+.sp-top a.sp-back:hover{text-decoration:underline}
+.sp-filters{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;box-shadow:var(--shadow);margin-bottom:12px}
+.sp-filter-row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
+.sp-field{display:flex;flex-direction:column;gap:4px}
+.sp-field label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.sp-field input[type=text],.sp-field select{font:inherit;font-size:14px;padding:7px 9px;border:1px solid var(--line2);border-radius:7px;background:var(--bg);color:var(--ink);min-width:140px}
+.sp-field input:focus,.sp-field select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--focus)}
+.sp-search{min-width:230px!important;flex:1}
+.sp-toggles{display:flex;gap:14px;align-items:center}
+.sp-toggles label{display:flex;gap:6px;align-items:center;font-size:13px;font-weight:600;color:var(--ink);cursor:pointer}
+.sp-clear{font:inherit;font-size:13px;font-weight:600;color:var(--accent2);background:none;border:0;cursor:pointer;padding:6px 2px}
+.sp-clear:hover{text-decoration:underline}
+.sp-main{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(360px,1fr);gap:16px;align-items:start}
+.sp-listwrap{background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);overflow:hidden}
+.sp-count{padding:9px 14px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--line)}
+.sp-scroll{max-height:calc(100vh - 250px);overflow:auto}
+table.sp-table{width:100%;border-collapse:collapse;font-size:13.5px}
+table.sp-table th{position:sticky;top:0;background:var(--head);text-align:left;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);cursor:pointer;white-space:nowrap;z-index:1}
+table.sp-table th:hover{color:var(--accent)}
+table.sp-table th .ar{font-size:9px;margin-left:3px}
+table.sp-table td{padding:6px 10px;border-top:1px solid var(--line);vertical-align:top}
+table.sp-table tbody tr{cursor:pointer}
+table.sp-table tbody tr:hover{background:rgba(200,16,46,.06)}
+table.sp-table tbody tr.sel{background:rgba(200,16,46,.12)}
+.sp-nm{font-weight:700;color:var(--ink)}
+.sp-badge{display:inline-block;font-size:10px;font-weight:800;padding:1px 5px;border-radius:4px;margin-left:5px;vertical-align:middle}
+.sp-badge.hb{background:#b8860b;color:#fff}
+.sp-badge.att{background:#6a4bd0;color:#fff}
+.sp-src{color:var(--muted);font-size:12px}
+.sp-col-num{text-align:right;width:88px}
+/* rarity reads at a glance, the way the books colour it */
+.rar{font-weight:700;font-size:12.5px}
+.rar-none{color:var(--muted);font-weight:400}
+.rar-common{color:#4a4a4a}
+.rar-uncommon{color:#1a7f37}
+.rar-rare{color:#1f6feb}
+.rar-veryrare{color:#8250df}
+.rar-legendary{color:#bf8700}
+.rar-artifact{color:#a5301c}
+.rar-varies,.rar-unknown{color:var(--muted);font-style:italic;font-weight:400}
+.sp-detail{position:sticky;top:14px;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:20px 22px;max-height:calc(100vh - 40px);overflow:auto}
+.sp-detail .sp-close{display:none}
+.sp-detail h2{margin:0 0 3px;font-size:22px;color:var(--accent)}
+.sp-detail .sp-sub2{color:var(--muted);font-style:italic;font-size:14px;margin-bottom:14px}
+.sp-meta{display:grid;grid-template-columns:1fr 1fr;gap:8px 18px;margin:0 0 14px;padding:12px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.sp-meta .m{font-size:13.5px}
+.sp-meta .m.wide{grid-column:1 / -1}
+.sp-meta .m b{display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:1px}
+.sp-detail .sp-body p{margin:0 0 10px}
+.sp-detail .sp-body ul{margin:0 0 10px;padding-left:20px}
+.sp-detail .sp-body table{border-collapse:collapse;margin:6px 0 12px;font-size:13px}
+.sp-detail .sp-body th,.sp-detail .sp-body td{border:1px solid var(--line2);padding:4px 8px;text-align:left}
+.sp-empty{color:var(--muted);text-align:center;padding:60px 20px}
+.sub-h{font-weight:700}
+.tag-dmg{color:var(--accent);font-weight:700}.tag-roll{font-weight:700}.tag-link{color:var(--link)}.tag-note{color:var(--muted);font-style:italic}
+@media (max-width:900px){
+  .sp-main{grid-template-columns:1fr}
+  .sp-detail{position:fixed;inset:0;z-index:50;border-radius:0;max-height:none;display:none}
+  .sp-detail.open{display:block}
+  .sp-detail .sp-close{display:inline-block;position:absolute;top:12px;right:14px;background:var(--bg);border:1px solid var(--line2);border-radius:7px;width:34px;height:34px;font-size:18px;cursor:pointer;color:var(--ink)}
+  .sp-scroll{max-height:none}
+}
+</style>
+</head>
+<body>
+<div class="sp-wrap">
+  <div class="sp-top">
+    <h1>Item Reference</h1>
+    <span class="sp-sub" id="spTagline"></span>
+    <span class="sp-spacer"></span>
+    <a class="sp-back" href="classes.html">Classes</a>
+    <a class="sp-back" href="races.html">Species</a>
+    <a class="sp-back" href="spells.html">Spells</a>
+    <a class="sp-back" href="creatures.html">Creatures</a>
+    <a class="sp-back" href="feats.html">Feats</a>
+    <a class="sp-back" href="index.html">&larr; Character Creator</a>
+  </div>
+  <div class="sp-filters">
+    <div class="sp-filter-row">
+      <div class="sp-field sp-search">
+        <label for="fSearch">Search</label>
+        <input type="text" id="fSearch" placeholder="Item name&hellip;" autocomplete="off">
+      </div>
+      <div class="sp-field">
+        <label for="fCat">Category</label>
+        <select id="fCat"><option value="">Any category</option></select>
+      </div>
+      <div class="sp-field">
+        <label for="fRar">Rarity</label>
+        <select id="fRar"><option value="">Any rarity</option></select>
+      </div>
+      <div class="sp-field">
+        <label for="fSource">Book</label>
+        <select id="fSource"><option value="">Any book</option></select>
+      </div>
+      <div class="sp-field">
+        <label>Only</label>
+        <div class="sp-toggles">
+          <label><input type="checkbox" id="fMagic"> Magic</label>
+          <label><input type="checkbox" id="fAtt"> Attunement</label>
+          <label><input type="checkbox" id="fHB"> Homebrew</label>
+          <label><input type="checkbox" id="fNoVar"> Hide variants</label>
+        </div>
+      </div>
+      <button class="sp-clear" id="fClear">Reset filters</button>
+    </div>
+  </div>
+  <div class="sp-main">
+    <div class="sp-listwrap">
+      <div class="sp-count" id="spCount"></div>
+      <div class="sp-scroll">
+        <table class="sp-table">
+          <thead><tr id="spHead"></tr></thead>
+          <tbody id="spBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="sp-detail" id="spDetail">
+      <button class="sp-close" id="spClose">&times;</button>
+      <div id="spDetailInner"><div class="sp-empty">Select an item to see its details.</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var BASE=(window.CC_ITEMS||[]).slice();
+  /* The specific magic variants ("+1 Longsword") are generated from a generic variant
+     ("+1 Weapon") crossed with every base item it applies to - that is how 5etools gets
+     to its item count. They carry no rules text of their own; each names its parent in
+     `of`, and the parent's text is shown instead. */
+  var VARIANTS=(window.CC_ITEM_VARIANTS||[]).slice();
+  var PARENT={};
+  BASE.forEach(function(it){if(it.variant)PARENT[it.name]=it;});
+  var LIST=BASE.concat(VARIANTS);
+  var SOURCES=window.CC_SOURCES||{};
+  var HB_NAMES={GriffonsSaddlebag2:"The Griffon's Saddlebag, Book 2"};
+  function srcName(c){return SOURCES[c]||HB_NAMES[c]||c;}
+  var $=function(id){return document.getElementById(id);};
+
+  // ---------- text helpers (same renderer as the other reference pages) ----------
+  function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+  function lastSeg(p){for(var i=p.length-1;i>=0;i--)if(p[i]!=="")return p[i];return p[0];}
+  function tagHtml(tag,content){
+    var p=content.split("|"),txt;
+    switch(tag){
+      case"b":case"bold":return"<strong>"+p[0]+"</strong>";
+      case"i":case"italic":case"nsw":return"<em>"+p[0]+"</em>";
+      case"u":return"<u>"+p[0]+"</u>";
+      case"s":case"strike":return"<s>"+p[0]+"</s>";
+      case"note":return'<span class="tag-note">'+p[0]+"</span>";
+      case"h":return"<strong>Hit:</strong> ";
+      case"dc":return'<span class="tag-roll">DC '+p[0]+"</span>";
+      case"damage":return'<span class="tag-dmg">'+((p[1]&&p[1]!=="")?p[1]:p[0])+"</span>";
+      case"scaledamage":return'<span class="tag-dmg">'+lastSeg(p)+"</span>";
+      case"dice":case"d20":case"hit":return'<span class="tag-roll">'+((p[1]&&p[1]!=="")?p[1]:p[0])+"</span>";
+      case"scaledice":return'<span class="tag-roll">'+lastSeg(p)+"</span>";
+      case"chance":return'<span class="tag-roll">'+p[0]+" percent</span>";
+      case"recharge":return"(Recharge "+(p[0]||"6")+")";
+      case"atk":
+        var m={"mw":"Melee Weapon Attack:","rw":"Ranged Weapon Attack:","mw,rw":"Melee or Ranged Weapon Attack:",
+               "ms":"Melee Spell Attack:","rs":"Ranged Spell Attack:","ms,rs":"Melee or Ranged Spell Attack:"};
+        return "<em>"+(m[p[0]]||"Attack:")+"</em> ";
+      case"filter":case"book":case"quickref":case"adventure":case"footnote":case"area":
+        return '<span class="tag-link">'+p[0]+"</span>";
+      default:
+        txt=(p.length>=3&&p[2])?p[2]:p[0];return '<span class="tag-link">'+txt+"</span>";
+    }
+  }
+  function renderTags(s){
+    s=esc(s);
+    // variant items ("+1 Shield (*)") carry {=baseName} placeholders with nothing to fill
+    // them from here, so they are dropped rather than shown as braces
+    s=s.replace(/\{=[^{}]*\}/g,"");
+    var re=/\{@(\w+)\s*([^{}]*)\}/,m,guard=0;
+    while((m=re.exec(s))&&guard++<800){s=s.slice(0,m.index)+tagHtml(m[1],(m[2]||"").trim())+s.slice(m.index+m[0].length);}
+    return s;
+  }
+  function renderInline(e){
+    if(e==null)return"";
+    if(typeof e==="string")return renderTags(e);
+    if(e.type==="list")return renderEntry(e);
+    var nm=e.name?'<span class="sub-h">'+renderTags(e.name)+".</span> ":"";
+    return nm+([].concat(e.entries||e.entry||[]).map(renderInline).join(" "));
+  }
+  function renderEntry(e){
+    if(e==null)return"";
+    if(typeof e==="string")return"<p>"+renderTags(e)+"</p>";
+    var t=e.type;
+    if(t==="entries"||t==="section"||t===undefined){
+      var lead=e.name?'<span class="sub-h">'+renderTags(e.name)+".</span> ":"";
+      var inner=(e.entries||[]).map(renderEntry).join("");
+      if(e.name&&inner.indexOf("<p>")===0){inner=inner.replace("<p>","<p>"+lead);lead="";}
+      return (lead?"<p>"+lead+"</p>":"")+inner;
+    }
+    if(t==="list")return "<ul>"+(e.items||[]).map(function(it){return "<li>"+renderInline(it)+"</li>";}).join("")+"</ul>";
+    if(t==="item"){var nm=e.name?'<span class="sub-h">'+renderTags(e.name)+"</span> ":"";return "<p>"+nm+([].concat(e.entries||e.entry||[]).map(renderInline).join(" "))+"</p>";}
+    if(t==="table"){
+      var head=(e.colLabels||[]).map(function(c){return "<th>"+renderTags(c)+"</th>";}).join("");
+      var rows=(e.rows||[]).map(function(r){return "<tr>"+r.map(function(c){return "<td>"+renderInline(c)+"</td>";}).join("")+"</tr>";}).join("");
+      return "<table>"+(head?"<thead><tr>"+head+"</tr></thead>":"")+"<tbody>"+rows+"</tbody></table>";
+    }
+    if(t==="quote")return "<p><em>"+(e.entries||[]).map(renderInline).join(" ")+"</em></p>";
+    return "<p>"+renderInline(e)+"</p>";
+  }
+
+  // ---------- how an item reads ----------
+  var DMG={S:"slashing",P:"piercing",B:"bludgeoning",R:"radiant",N:"necrotic",F:"fire",C:"cold",
+           L:"lightning",T:"thunder",A:"acid",O:"force",Y:"psychic",I:"poison"};
+  var RAR_ORDER=["none","common","uncommon","rare","very rare","legendary","artifact"];
+  function rarClass(r){
+    var k=String(r||"").toLowerCase();
+    if(k==="none")return "rar-none";
+    if(k==="very rare")return "rar-veryrare";
+    if(RAR_ORDER.indexOf(k)>=0)return "rar-"+k;
+    return "rar-varies";
+  }
+  function rarText(r){
+    var k=String(r||"").toLowerCase();
+    return k==="none"?"mundane":k;
+  }
+  function isMagic(it){
+    var k=String(it.rarity||"").toLowerCase();
+    return !!k&&k!=="none";
+  }
+  // 5etools stores value in copper
+  function coin(v){
+    if(v==null)return "";
+    if(v>=10000&&v%10000===0)return (v/100)+" gp";
+    if(v>=100)return (v/100)+" gp";
+    if(v>=10)return (v/10)+" sp";
+    return v+" cp";
+  }
+  function weaponLine(it){
+    var bits=[];
+    if(it.dmg)bits.push(it.dmg+(it.dmgType?" "+(DMG[it.dmgType]||it.dmgType):""));
+    if(it.weaponCat)bits.push(it.weaponCat+(it.wtype==="R"?" ranged":" melee"));
+    if(it.range)bits.push("range "+it.range);
+    if(it.props&&it.props.length)bits.push(it.props.join(", "));
+    return bits.join(" · ");
+  }
+  function armorLine(it){
+    var bits=[];
+    if(it.ac!=null)bits.push("AC "+it.ac);
+    if(it.armorKind)bits.push(it.armorKind+" armour");
+    if(it.strReq)bits.push("Strength "+it.strReq);
+    if(it.stealthDis)bits.push("Stealth disadvantage");
+    if(it.bonusAc)bits.push("bonus AC "+it.bonusAc);
+    return bits.join(" · ");
+  }
+
+  // ---------- filter option lists ----------
+  var catSet={},rarSet={},srcSet={};
+  LIST.forEach(function(it){
+    if(it.cat)catSet[it.cat]=1;
+    if(it.rarity)rarSet[it.rarity]=1;
+    srcSet[it.source]=1;
+  });
+  function keysSorted(o){var a=[];for(var k in o)a.push(k);a.sort();return a;}
+  keysSorted(catSet).forEach(function(v){var o=document.createElement("option");o.value=v;o.textContent=v;$("fCat").appendChild(o);});
+  keysSorted(rarSet).sort(function(a,b){
+    var i=RAR_ORDER.indexOf(String(a).toLowerCase()),j=RAR_ORDER.indexOf(String(b).toLowerCase());
+    return (i<0?99:i)-(j<0?99:j);
+  }).forEach(function(v){var o=document.createElement("option");o.value=v;o.textContent=rarText(v);$("fRar").appendChild(o);});
+  keysSorted(srcSet).sort(function(a,b){return srcName(a).localeCompare(srcName(b));}).forEach(function(v){
+    var o=document.createElement("option");o.value=v;o.textContent=(srcName(v)!==v)?(srcName(v)+" ("+v+")"):v;$("fSource").appendChild(o);
+  });
+
+  var st={q:"",cat:"",rar:"",source:"",magic:false,att:false,hb:false,novar:false,sort:"name",dir:1,sel:null};
+  function pass(it){
+    if(st.q&&it.name.toLowerCase().indexOf(st.q)<0)return false;
+    if(st.cat&&it.cat!==st.cat)return false;
+    if(st.rar&&it.rarity!==st.rar)return false;
+    if(st.source&&it.source!==st.source)return false;
+    if(st.magic&&!isMagic(it))return false;
+    if(st.att&&!it.attune)return false;
+    if(st.hb&&!it.hb)return false;
+    if(st.novar&&it.of)return false;        // a generated "+1 Longsword" and its kin
+    return true;
+  }
+  var COLS=[
+    {k:"name",t:"Item",cell:function(it){
+      return '<span class="sp-nm">'+esc(it.name)+"</span>"+
+        (it.hb?' <span class="sp-badge hb" title="Homebrew: '+esc(srcName(it.source))+'">HB</span>':"")+
+        (it.attune?' <span class="sp-badge att" title="Requires attunement">A</span>':"");
+    }},
+    {k:"cat",t:"Category",cell:function(it){return esc(it.cat||"—");}},
+    {k:"rarity",t:"Rarity",cell:function(it){return '<span class="rar '+rarClass(it.rarity)+'">'+esc(rarText(it.rarity))+"</span>";},
+      val:function(it){var i=RAR_ORDER.indexOf(String(it.rarity||"").toLowerCase());return i<0?99:i;}},
+    {k:"stats",t:"Stats",cell:function(it){
+      var s=it.cat==="Armor"?armorLine(it):weaponLine(it);
+      return s?esc(s):'<span class="sp-src">—</span>';},
+      val:function(it){return (it.cat==="Armor"?armorLine(it):weaponLine(it)).toLowerCase();}},
+    {k:"value",t:"Value",cls:"sp-col-num",cell:function(it){return it.value==null?'<span class="sp-src">—</span>':esc(coin(it.value));},
+      val:function(it){return it.value==null?-1:it.value;}},
+    {k:"source",t:"Book",cell:function(it){
+      var s='<span class="sp-src" title="'+esc(srcName(it.source))+'">'+esc(it.source)+"</span>";
+      if(it.baseSrc&&it.baseSrc!==it.source)
+        s+='<div class="sp-src" title="built on the '+esc(srcName(it.baseSrc))+' printing of '+esc(it.base||"")+'">via '+esc(it.baseSrc)+"</div>";
+      return s;}}
+  ];
+  function sortVal(it,k){var c=null;for(var i=0;i<COLS.length;i++)if(COLS[i].k===k)c=COLS[i];if(c&&c.val)return c.val(it);return String(it[k]||"").toLowerCase();}
+  function renderHead(){
+    $("spHead").innerHTML=COLS.map(function(c){
+      var ar=st.sort===c.k?'<span class="ar">'+(st.dir>0?"▲":"▼")+"</span>":"";
+      return '<th data-k="'+c.k+'"'+(c.cls?' class="'+c.cls+'"':"")+">"+c.t+ar+"</th>";
+    }).join("");
+    Array.prototype.forEach.call($("spHead").children,function(th){
+      th.addEventListener("click",function(){var k=th.getAttribute("data-k");if(st.sort===k)st.dir=-st.dir;else{st.sort=k;st.dir=1;}renderHead();renderList();});
+    });
+  }
+  var MAX_ROWS=400;                 // the item list is long; show a slice until it is filtered
+  function iid(it){return it.name+"|"+it.source+"|"+(it.baseSrc||"");}
+  function renderList(){
+    var rows=LIST.filter(pass);
+    rows.sort(function(a,b){
+      var va=sortVal(a,st.sort),vb=sortVal(b,st.sort);
+      if(va<vb)return -st.dir;if(va>vb)return st.dir;
+      return a.name<b.name?-1:1;
+    });
+    var shown=rows.slice(0,MAX_ROWS);
+    $("spCount").textContent="Showing "+shown.length+(rows.length>shown.length?" of "+rows.length+" matches":"")+
+      " — "+LIST.length+" items in all"+(rows.length>shown.length?" (narrow the filters to see the rest)":"");
+    var body=$("spBody");
+    if(!shown.length){body.innerHTML='<tr><td colspan="'+COLS.length+'"><div class="sp-empty">No items match these filters.</div></td></tr>';return;}
+    body.innerHTML=shown.map(function(it){
+      var sel=(st.sel===iid(it))?" sel":"";
+      return '<tr class="sprow'+sel+'" data-id="'+esc(iid(it))+'">'+COLS.map(function(c){return "<td"+(c.cls?' class="'+c.cls+'"':"")+">"+c.cell(it)+"</td>";}).join("")+"</tr>";
+    }).join("");
+    Array.prototype.forEach.call(body.querySelectorAll(".sprow"),function(tr){
+      tr.addEventListener("click",function(){select(tr.getAttribute("data-id"));});
+    });
+  }
+  function itemById(id){for(var i=0;i<LIST.length;i++)if(iid(LIST[i])===id)return LIST[i];return null;}
+  function select(id){
+    st.sel=id;
+    Array.prototype.forEach.call($("spBody").querySelectorAll(".sprow"),function(tr){tr.classList.toggle("sel",tr.getAttribute("data-id")===id);});
+    renderDetail(itemById(id));
+    $("spDetail").classList.add("open");
+  }
+  function renderDetail(it){
+    if(!it){$("spDetailInner").innerHTML='<div class="sp-empty">Select an item to see its details.</div>';return;}
+    var sub=[it.cat,rarText(it.rarity)].filter(function(x){return x;}).join(", ");
+    var meta="";
+    function row(lbl,val,wide){if(val)meta+='<div class="m'+(wide?" wide":"")+'"><b>'+lbl+"</b>"+val+"</div>";}
+    if(it.cat==="Armor")row("Armour",esc(armorLine(it)),true);
+    else if(weaponLine(it))row("Weapon",esc(weaponLine(it)),true);
+    row("Value",it.value==null?"":esc(coin(it.value)));
+    if(it.attune)row("Attunement",it.attune===true?"Required":renderTags(String(it.attune)));
+    if(it.requires&&it.requires.length)row("Applies to",renderTags(it.requires.join(", ")));
+    if(it.bonusWeapon)row("Bonus",esc(it.bonusWeapon)+" to attack and damage");
+    if(it.baseItem)row("Base item",renderTags(String(it.baseItem).split("|")[0]));
+    if(it.of)row("Magic variant",esc(it.of)+" applied to "+esc(it.base||"")+
+      (it.baseSrc?' <span class="sp-src">('+esc(it.baseSrc)+")</span>":""),true);
+    if(it.props&&it.props.length&&it.cat!=="Weapon")row("Properties",esc(it.props.join(", ")));
+    var book=(srcName(it.source)!==it.source)?(esc(it.source)+" — "+esc(srcName(it.source))):esc(it.source);
+    $("spDetailInner").innerHTML=
+      "<h2>"+esc(it.name)+(it.hb?' <span class="sp-badge hb">HOMEBREW</span>':"")+"</h2>"+
+      '<div class="sp-sub2">'+esc(sub)+(it.edition==="one"?" &middot; 2024":"")+" &middot; "+book+"</div>"+
+      (meta?'<div class="sp-meta">'+meta+"</div>":"")+
+      '<div class="sp-body">'+((it.entries&&it.entries.length)?it.entries.map(renderEntry).join("")
+        :(it.of&&PARENT[it.of]&&PARENT[it.of].entries)?PARENT[it.of].entries.map(renderEntry).join("")
+        :'<p class="tag-note">This item has no extra rules text - its stats above are the whole entry.</p>')+"</div>";
+    $("spDetail").scrollTop=0;
+  }
+
+  // ---------- wire controls ----------
+  var searchT;
+  $("fSearch").addEventListener("input",function(){clearTimeout(searchT);var v=this.value;searchT=setTimeout(function(){st.q=v.trim().toLowerCase();renderList();},130);});
+  $("fCat").addEventListener("change",function(){st.cat=this.value;renderList();});
+  $("fRar").addEventListener("change",function(){st.rar=this.value;renderList();});
+  $("fSource").addEventListener("change",function(){st.source=this.value;renderList();});
+  $("fMagic").addEventListener("change",function(){st.magic=this.checked;renderList();});
+  $("fAtt").addEventListener("change",function(){st.att=this.checked;renderList();});
+  $("fHB").addEventListener("change",function(){st.hb=this.checked;renderList();});
+  $("fNoVar").addEventListener("change",function(){st.novar=this.checked;renderList();});
+  $("fClear").addEventListener("click",function(){
+    st.q="";st.cat="";st.rar="";st.source="";st.magic=false;st.att=false;st.hb=false;st.novar=false;
+    $("fSearch").value="";$("fCat").value="";$("fRar").value="";$("fSource").value="";
+    $("fMagic").checked=false;$("fAtt").checked=false;$("fHB").checked=false;$("fNoVar").checked=false;
+    renderList();
+  });
+  $("spClose").addEventListener("click",function(){$("spDetail").classList.remove("open");});
+
+  // ---------- boot ----------
+  if(!LIST.length){
+    $("spBody").innerHTML='<tr><td colspan="'+COLS.length+'"><div class="sp-empty">Item data not found. Run <code>python tools/gen_items.py</code>.</div></td></tr>';
+  }else{
+    $("spTagline").textContent=LIST.length+" items across "+keysSorted(srcSet).length+" books";
+    renderHead();renderList();
+  }
+})();
+</script>
+</body>
+</html>

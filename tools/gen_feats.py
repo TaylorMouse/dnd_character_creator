@@ -52,6 +52,62 @@ def parse_ability(arr):
     if not fixed and not choose: return None
     return {"fixed": fixed, "choose": choose, "max": cap}
 
+SKILL_ANY = "anySkill"
+def _norm(s):
+    return s.title() if isinstance(s,str) and s.islower() else s
+
+def parse_prof(arr, kind="skill"):
+    """A feat's proficiency grants: named ones, a choice from a list, or 'any N'."""
+    fixed, choose, anyN = [], None, 0
+    for blk in arr or []:
+        if not isinstance(blk, dict): continue
+        for k, v in blk.items():
+            if k == "choose" and isinstance(v, dict):
+                choose = {"from": [_norm(x) for x in v.get("from", [])], "count": v.get("count", 1)}
+                # Weapon Master says "four weapons of your choice" as a filter, not a list
+                if v.get("fromFilter"): choose["fromFilter"] = v["fromFilter"]
+            elif k in ("any", "anySkill", "anyTool", "anyLanguage",
+                       "anyArtisansTool", "anyStandard", "anyMusicalInstrument"):
+                anyN += v if isinstance(v, int) else 1
+            elif v is True:
+                fixed.append(_norm(k.split("|")[0]))
+    if not fixed and not choose and not anyN: return None
+    return {"fixed": fixed, "choose": choose, "any": anyN}
+
+def parse_stl(arr):
+    """Skilled's 'any three skills or tools' - one pool spanning several kinds."""
+    for blk in arr or []:
+        if not isinstance(blk, dict): continue
+        for ch in (blk.get("choose") or []):
+            if isinstance(ch, dict):
+                return {"from": ch.get("from", []), "count": ch.get("count", 1)}
+    return None
+
+def parse_expertise(arr):
+    """Skill Expert doubles the bonus on one skill you are already proficient in."""
+    n = 0
+    for blk in arr or []:
+        if not isinstance(blk, dict): continue
+        for k, v in blk.items():
+            if isinstance(v, int): n += v
+            elif v is True: n += 1
+    return n or None
+
+def parse_optprog(arr):
+    """Metamagic Adept, Martial Adept, Eldritch Adept, Fighting Initiate: a feat that
+    hands out options from a class's list, identified by 5etools feature-type codes."""
+    out = []
+    for blk in arr or []:
+        if not isinstance(blk, dict): continue
+        prog = blk.get("progression") or {}
+        cnt = prog.get("*")
+        if cnt is None:
+            nums = [v for v in prog.values() if isinstance(v, int)]
+            cnt = max(nums) if nums else 1
+        out.append({"name": blk.get("name", "Options"),
+                    "types": blk.get("featureType") or [], "count": cnt})
+    return out or None
+
 d = json.load(open(os.path.join(_DATA_ROOT, "feats.json"), encoding="utf-8"))
 out = []
 for f in d["feat"]:
@@ -62,6 +118,24 @@ for f in d["feat"]:
          "entries": f.get("entries", [])}
     ab = parse_ability(f.get("ability"))
     if ab: o["ability"] = ab
+    # everything else the feat actually grants, so the app can offer/apply it
+    for key, val in (
+        ("optProg",   parse_optprog(f.get("optionalfeatureProgression"))),
+        ("skills",    parse_prof(f.get("skillProficiencies"))),
+        ("tools",     parse_prof(f.get("toolProficiencies"))),
+        ("langs",     parse_prof(f.get("languageProficiencies"))),
+        ("armor",     parse_prof(f.get("armorProficiencies"))),
+        ("weapons",   parse_prof(f.get("weaponProficiencies"))),
+        ("saves",     parse_prof(f.get("savingThrowProficiencies"))),
+        ("stl",       parse_stl(f.get("skillToolLanguageProficiencies"))),
+        ("expertise", parse_expertise(f.get("expertise"))),
+    ):
+        if val: o[key] = val
+    if f.get("resist"):          o["resist"]  = [_norm(x) for x in f["resist"] if isinstance(x, str)]
+    if f.get("immune"):          o["immune"]  = [_norm(x) for x in f["immune"] if isinstance(x, str)]
+    if f.get("conditionImmune"): o["condImmune"] = [_norm(x) for x in f["conditionImmune"] if isinstance(x, str)]
+    if f.get("senses"):          o["senses"]  = f["senses"]
+    if f.get("additionalSpells"): o["hasSpells"] = True   # the spell grants themselves are not applied yet
     out.append(o)
 out.sort(key=lambda x: x["name"])
 io.open(OUT, "w", encoding="utf-8").write(

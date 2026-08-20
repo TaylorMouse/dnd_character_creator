@@ -284,12 +284,25 @@
     var list=(window.CC_RACES&&window.CC_RACES[state.edition])||[];
     var coreList=list.filter(function(r){return r.isCore;});
     var expList=list.filter(function(r){return !r.isCore;});
-    function opt(r){var a=abilShort(r.ability);return '<option value="'+esc(r.name+"|"+r.source)+'" title="'+esc(sourceName(r.source))+'">'+esc(r.name+(!r.isCore?" ("+srcAbbr(r.source)+")":"")+(a?" ["+a+"]":""))+"</option>";}
+    // Each species with subraces contributes one option per lineage ("Elf — Drow"); a species
+    // with none is a single option. The value is "name|source" or "name|source|lineage", so
+    // choosing a subrace picks the species and its lineage together — no separate picker.
+    function opts(r){
+      var tag=(!r.isCore?" ("+srcAbbr(r.source)+")":"");
+      if(r.lineages&&r.lineages.length){
+        return r.lineages.map(function(l){
+          var a=abilShort(combineAbil(r.ability,l.ability));
+          return '<option value="'+esc(r.name+"|"+r.source+"|"+l.name)+'" title="'+esc(sourceName(l.source||r.source))+'">'+esc(r.name+tag+" — "+l.name+(a?" ["+a+"]":""))+"</option>";
+        }).join("");
+      }
+      var a=abilShort(r.ability);
+      return '<option value="'+esc(r.name+"|"+r.source)+'" title="'+esc(sourceName(r.source))+'">'+esc(r.name+tag+(a?" ["+a+"]":""))+"</option>";
+    }
     var html='<option value="">— Choose a species —</option>';
-    if(coreList.length)html+='<optgroup label="Core">'+coreList.map(opt).join("")+"</optgroup>";
-    if(expList.length)html+='<optgroup label="Expanded">'+expList.map(opt).join("")+"</optgroup>";
+    if(coreList.length)html+='<optgroup label="Core">'+coreList.map(opts).join("")+"</optgroup>";
+    if(expList.length)html+='<optgroup label="Expanded">'+expList.map(opts).join("")+"</optgroup>";
     sel.innerHTML=html;
-    sel.value=state.race?state.race.name+"|"+state.race.source:"";
+    sel.value=state.race?(state.race.name+"|"+state.race.source+(state.raceLineage?"|"+state.raceLineage:"")):"";
   }
 
   function loadFeatureData(slug,cb){
@@ -367,6 +380,12 @@
     });
     if(chosen)chosen.features.forEach(function(f){
       if(f.level<=lvl&&tableChoiceCfg(fd.name,chosen.shortName,f.name))keys["tbl:"+f.name+":0"]=1;
+    });
+    // skill / language / tool pickers a feature offers "of your choice" (keep them across level changes)
+    featuresAndTraits().forEach(function(f){
+      [featureSkillChoice(f),featureLangChoice(f),featureToolChoice(f)].forEach(function(c){
+        if(c)for(var i=0;i<c.count;i++)keys[c.key+":"+i]=1;
+      });
     });
     return keys;
   }
@@ -482,12 +501,16 @@
       }
       if(ft.ability.max)html+='<div class="choice-desc tag-note">This can raise the score to a maximum of '+ft.ability.max+".</div>";
     }
-    return html;
+    return html+featPicksHtml(ft,"asi:"+level+":ft:",state.choices,"asi-featpick");
   }
   function asiResolved(level){
     var mode=state.choices["asi:"+level+":mode"];
     if(!mode)return false;
-    if(mode==="feat")return !!state.choices["asi:"+level+":feat"]&&!featAsiPending(level);
+    if(mode==="feat"){
+      var _ft=featByName(state.choices["asi:"+level+":feat"]);
+      return !!state.choices["asi:"+level+":feat"]&&!featAsiPending(level)&&
+             !(_ft&&featPicksPending(_ft,"asi:"+level+":ft:",state.choices));
+    }
     var dist=state.choices["asi:"+level+":dist"]||"2",n=dist==="11"?2:1;
     for(var i=0;i<n;i++){if(!state.choices["asi:"+level+":a"+i])return false;}
     return true;
@@ -635,6 +658,74 @@
     return {html:html+"</div>",count:c.count,pending:picked<c.count};
   }
 
+  /* ---------- languages / tools granted "of your choice" by a feature ----------
+     e.g. Ranger Favored Enemy ("you learn one language of your choice"), a Bonus Proficiency
+     that grants "one type of artisan's tools of your choice". Mirrors featureSkillChoice: a
+     picker appears inside the granting feature, and the chosen values feed the languages list
+     and the tool-proficiency display. */
+  function featureLangChoice(f){
+    var txt=plainTags(entryText(f.entries||""));
+    var m=/(a|one|two|three) (?:additional )?languages? of your choice/i.exec(txt);
+    if(!m)return null;
+    // "Alternatively/Instead, you learn one language" is an either/or with a skill the feature
+    // already offers — the skill picker covers it, so don't also grant a language.
+    if(/alternativ|instead/i.test(txt.substr(Math.max(0,m.index-30),30)))return null;
+    return {count:NUMWORD[m[1].toLowerCase()]||1,pool:langPool(),key:"featlang:"+f.name,label:"Language from "+f.name};
+  }
+  function toolPoolFor(kind){
+    var t=(window.CC_PROF_OPTS||{}).tools||{},flat=[],g;
+    function push(gr){(t[gr]||[]).forEach(function(x){flat.push(x);});}
+    if(kind==="artisan")push("Artisan's Tools");
+    else if(kind==="gaming")push("Gaming Sets");
+    else if(kind==="musical")push("Musical Instruments");
+    else for(g in t)push(g);
+    return flat;
+  }
+  function featureToolChoice(f){
+    var txt=plainTags(entryText(f.entries||""));
+    var m=/(a|one|two|three) (?:type[s]? of |kind[s]? of )?([a-z' ]*?(?:artisan'?s tools|gaming set|musical instrument|tool))s? of your choice/i.exec(txt);
+    if(!m)return null;
+    // "If you already have this proficiency, you gain ... of your choice" is a conditional swap
+    // for a tool the feature already grants outright — don't offer it as an extra pick.
+    if(/if you already have|already have (?:this|one of these)/i.test(txt.substr(Math.max(0,m.index-120),120)))return null;
+    var noun=m[2].toLowerCase(),kind="any";
+    if(/artisan/.test(noun))kind="artisan";
+    else if(/gaming/.test(noun))kind="gaming";
+    else if(/musical|instrument/.test(noun))kind="musical";
+    var name=kind==="artisan"?"Artisan's tools":kind==="gaming"?"Gaming set":kind==="musical"?"Musical instrument":"Tool";
+    return {count:NUMWORD[m[1].toLowerCase()]||1,pool:toolPoolFor(kind),key:"feattool:"+f.name,label:name+" from "+f.name};
+  }
+  // a picker (reusing the .feat-skill select wiring) for each language/tool a feature lets you pick
+  function featureProfChoiceHtml(f){
+    var out={html:"",count:0,pending:false};
+    [featureLangChoice(f),featureToolChoice(f)].forEach(function(c){
+      if(!c||!c.pool.length)return;
+      var picked=0,h='<div class="origin-picker"><label>'+esc(c.label)+"</label>";
+      for(var i=0;i<c.count;i++){
+        var cur=state.choices[c.key+":"+i]||"";if(cur)picked++;
+        var others=[];
+        for(var j=0;j<c.count;j++){if(j!==i){var vv=state.choices[c.key+":"+j];if(vv)others.push(vv);}}
+        h+='<select class="feat-skill" data-key="'+esc(c.key)+'" data-idx="'+i+'"><option value="">- Choose -</option>'+
+          c.pool.map(function(o){
+            var val=(typeof o==="string")?o:o.val,lab=(typeof o==="string")?o:o.label;
+            return '<option value="'+esc(val)+'"'+(others.indexOf(val)>=0?" disabled":"")+(cur===val?" selected":"")+">"+esc(lab)+"</option>";
+          }).join("")+"</select>";
+      }
+      out.html+=h+"</div>";out.count+=c.count;if(picked<c.count)out.pending=true;
+    });
+    return out;
+  }
+  function featureChoicePicks(chooser){
+    var out=[],seen={};
+    featuresAndTraits().forEach(function(f){
+      if(seen[f.name])return;var c=chooser(f);if(!c)return;seen[f.name]=1;
+      for(var i=0;i<c.count;i++){var v=state.choices[c.key+":"+i];if(v)out.push(v);}
+    });
+    return out;
+  }
+  function featureLangPicks(){return featureChoicePicks(featureLangChoice);}
+  function featureToolPicks(){return featureChoicePicks(featureToolChoice);}
+
   function stripOptions(entries){return (entries||[]).filter(function(e){return !(e&&typeof e==="object"&&e.type==="options");});}
 
   function renderFeatures(){
@@ -687,6 +778,8 @@
         body=(f.entries||[]).map(renderEntry).join("");
         var fsk=featureSkillHtml(f);
         if(fsk.count){body+=fsk.html;choicesN=fsk.count;if(fsk.pending)pending=true;}
+        var fpc=featureProfChoiceHtml(f);
+        if(fpc.count){body+=fpc.html;choicesN+=fpc.count;if(fpc.pending)pending=true;}
         if(f.name==="Expertise"){var exh=expertiseHtml(f);body+=exh.html;if(exh.count){choicesN=exh.count;if(exh.pending)pending=true;}}
         if(f.isSub){
           var tc=tableChoiceCfg(fd.name,chosen&&chosen.shortName,f.name);
@@ -743,6 +836,12 @@
       sel.addEventListener("change",function(e){
         state.choices[sel.getAttribute("data-key")+":"+sel.getAttribute("data-idx")]=e.target.value||"";
         render();
+      });
+    });
+    Array.prototype.forEach.call($("featureList").querySelectorAll(".asi-featpick"),function(sel){
+      sel.addEventListener("click",function(e){e.stopPropagation();});
+      sel.addEventListener("change",function(e){
+        state.choices[sel.getAttribute("data-key")]=e.target.value||"";render();
       });
     });
     Array.prototype.forEach.call($("featureList").querySelectorAll(".asi-featab"),function(sel){
@@ -1040,6 +1139,285 @@
     for(var i=0;i<w.length;i++)if(!state.raceChoices["race:custom:a"+i])return true;
     return false;
   }
+  /* Every feat the character has taken: the one a species hands out and any taken in
+     place of an Ability Score Improvement. Each carries the key prefix and the store its
+     own picks live in, so two copies of a feat never share answers. */
+  function allChosenFeats(){
+    var out=[],g=raceFeatGrant(),i;
+    if(g)for(i=0;i<g.count;i++){
+      var rf=featByName(raceFeatName(i));
+      if(rf)out.push({ft:rf,base:"race:feat"+i+":",store:state.raceChoices});
+    }
+    var fd=state.fdata;
+    if(fd)(fd.classFeatures||[]).forEach(function(f){
+      if(f.name!=="Ability Score Improvement"||f.level>state.level)return;
+      if(state.choices["asi:"+f.level+":mode"]!=="feat")return;
+      var af=featByName(state.choices["asi:"+f.level+":feat"]);
+      if(af)out.push({ft:af,base:"asi:"+f.level+":ft:",store:state.choices});
+    });
+    return out;
+  }
+  /* ---------- what a feat actually grants ----------
+     A feat is not just prose: Metamagic Adept hands out two Metamagic options and two
+     sorcery points, Skilled three skills or tools, Skill Expert a skill plus expertise.
+     5etools records all of that structurally, so these read the record rather than the
+     text, and every call site (an ASI feat, a feat from your species) shares them.
+
+     `store` is the object the picks live in (state.choices or state.raceChoices) and
+     `base` is the key prefix, so the same feat can be taken twice without collision. */
+  function optFeatureList(types,ed){
+    var pool=window.CC_OPTFEATURES||{},out=[],seen={};
+    (types||[]).forEach(function(ty){
+      (pool[ty]||[]).forEach(function(o){
+        if(o.edition!==ed)return;
+        if(seen[o.name])return;                 // the same option is reprinted per edition
+        seen[o.name]=1;out.push(o);
+      });
+    });
+    // fall back to the other edition when a list only exists there (Maneuvers, Invocations)
+    if(!out.length)(types||[]).forEach(function(ty){
+      (pool[ty]||[]).forEach(function(o){if(!seen[o.name]){seen[o.name]=1;out.push(o);}});
+    });
+    out.sort(function(a,b){return a.name<b.name?-1:(a.name>b.name?1:0);});
+    return out;
+  }
+  // the skills/tools/languages a "choose any" grant can draw from
+  function anyPool(kind){
+    if(kind==="anySkill")return ALL_SKILLS.slice();
+    if(kind==="anyLanguage")return langPool().map(function(o){return o.val;});
+    if(kind==="anyTool"||kind==="anyArtisansTool"||kind==="anyMusicalInstrument"){
+      var t=(window.CC_PROF_OPTS||{}).tools||{},out=[],g;
+      for(g in t){
+        if(kind==="anyArtisansTool"&&g.indexOf("Artisan")<0)continue;
+        if(kind==="anyMusicalInstrument"&&g.indexOf("Musical")<0)continue;
+        (t[g]||[]).forEach(function(x){out.push(x);});
+      }
+      return out;
+    }
+    return [];
+  }
+  /* Every pick a feat asks for, as a list of {key, label, pool} so the renderer and the
+     "what did you choose" reader stay in step. */
+  /* Guard against a loop: the expertise pool is "skills you are proficient in", and the
+     proficient-skill list now includes what feats grant - which is worked out here. While
+     building the slots we therefore read the list without the feat contribution. */
+  var _inFeatSlots=false;
+  function featPickSlots(ft,base){
+    if(!ft)return [];
+    var slots=[],i;
+    (ft.optProg||[]).forEach(function(p,pi){
+      var pool=optFeatureList(p.types,ft.edition).map(function(o){return o.name;});
+      for(i=0;i<p.count;i++)slots.push({kind:"option",key:base+"opt:"+pi+":"+i,
+        label:p.name+(p.count>1?" ("+(i+1)+" of "+p.count+")":""),pool:pool,types:p.types});
+    });
+    var ANY={skills:"anySkill",tools:"anyTool",langs:"anyLanguage"};
+    /* A weapon choice arrives as a 5etools filter ("type=martial weapon;mundane weapon"),
+       so it is resolved against the plain weapons in the item list. */
+    function filterPool(expr){
+      var want={},m=/type=([^|]+)/.exec(String(expr||""));
+      if(m)m[1].split(";").forEach(function(x){want[x.trim().toLowerCase()]=1;});
+      var out=[],seen={};
+      (window.CC_ITEMS||[]).forEach(function(it){
+        if(it.cat!=="Weapon")return;
+        if(it.rarity&&it.rarity!=="none")return;              // no magic items
+        if(it.baseItem||it.variant||it.bonusWeapon)return;    // no variants
+        var wc=String(it.weaponCat||"").toLowerCase();
+        if(!wc)return;
+        if((want["martial weapon"]&&wc==="martial")||(want["simple weapon"]&&wc==="simple")||
+           (!want["martial weapon"]&&!want["simple weapon"])){
+          if(!seen[it.name]){seen[it.name]=1;out.push(it.name);}
+        }
+      });
+      out.sort();
+      return out;
+    }
+    function profSlots(g,kind,label){
+      if(!g)return;
+      if(g.choose){
+        var pool=(g.choose.from&&g.choose.from.length)?g.choose.from:filterPool(g.choose.fromFilter);
+        for(i=0;i<g.choose.count;i++)
+          slots.push({kind:kind,key:base+kind+":c"+i,label:label,pool:pool});
+      }
+      for(i=0;i<(g.any||0);i++)
+        slots.push({kind:kind,key:base+kind+":a"+i,label:label,pool:anyPool(ANY[kind]||"")});
+    }
+    profSlots(ft.skills,"skills","Skill proficiency");
+    profSlots(ft.tools,"tools","Tool proficiency");
+    profSlots(ft.langs,"langs","Language");
+    profSlots(ft.weapons,"weapons","Weapon proficiency");
+    if(ft.stl){                                  // Skilled: any mix of skills and tools
+      var mixed=[];
+      (ft.stl.from||[]).forEach(function(k){mixed=mixed.concat(anyPool(k));});
+      for(i=0;i<ft.stl.count;i++)slots.push({kind:"stl",key:base+"stl:"+i,
+        label:"Skill or tool proficiency",pool:mixed});
+    }
+    for(i=0;i<(ft.expertise||0);i++){            // expertise applies to what you are proficient in
+      var prof=[];
+      var was=_inFeatSlots;_inFeatSlots=true;
+      var ps=proficientSkills();
+      _inFeatSlots=was;
+      for(var s in ps)prof.push(s);
+      prof.sort();
+      slots.push({kind:"expertise",key:base+"exp:"+i,label:"Expertise (double proficiency)",pool:prof});
+    }
+    return slots;
+  }
+  function featPicks(ft,base,store){
+    var out={options:[],skills:[],tools:[],langs:[],expertise:[]};
+    featPickSlots(ft,base).forEach(function(s){
+      var v=store[s.key];
+      if(!v)return;
+      if(s.kind==="option")out.options.push(v);
+      else if(s.kind==="stl"){
+        // one pool of skills and tools: file it under whichever it is
+        (ALL_SKILLS.indexOf(v)>=0?out.skills:out.tools).push(v);
+      }
+      else out[s.kind].push(v);
+    });
+    return out;
+  }
+  function featPicksPending(ft,base,store){
+    var slots=featPickSlots(ft,base);
+    for(var i=0;i<slots.length;i++)
+      if(slots[i].pool.length&&!store[slots[i].key])return true;   // an empty pool cannot be answered yet
+    return false;
+  }
+  function featPicksHtml(ft,base,store,cls){
+    var slots=featPickSlots(ft,base),html="";
+    slots.forEach(function(s){
+      var cur=store[s.key]||"",taken=[];
+      slots.forEach(function(o){if(o!==s&&o.kind===s.kind){var v=store[o.key];if(v)taken.push(v);}});
+      if(!s.pool.length){
+        html+='<div class="choice-desc tag-note">'+esc(s.label)+
+          (s.kind==="expertise"?": choose your skill proficiencies first, then come back."
+                               :": nothing to choose from.")+"</div>";
+        return;
+      }
+      html+='<select class="'+cls+'" data-key="'+esc(s.key)+'"><option value="">- '+esc(s.label)+" -</option>"+
+        s.pool.map(function(x){
+          return '<option value="'+esc(x)+'"'+(taken.indexOf(x)>=0?" disabled":"")+(cur===x?" selected":"")+">"+esc(x)+"</option>";
+        }).join("")+"</select>";
+      if(s.kind==="option"&&cur){               // show what the chosen option does
+        var o=optFeatureList(s.types,ft.edition).filter(function(x){return x.name===cur;})[0];
+        if(o&&o.entries&&o.entries.length)
+          html+='<div class="choice-desc">'+o.entries.map(renderEntry).join("")+"</div>";
+      }
+    });
+    return html;
+  }
+  /* A feat can also top up a class resource ("You gain 2 sorcery points to spend on
+     Metamagic"). The amount is only in the prose, so it is read from there and matched
+     against the resource names the class actually tracks. */
+  // everything the taken feats grant, merged (their fixed grants plus what you picked)
+  function featGrantsAll(){
+    var out={options:[],skills:[],tools:[],langs:[],expertise:[],armor:[],weapons:[],saves:[]};
+    function push(a,v){if(v&&a.indexOf(v)<0)a.push(v);}
+    allChosenFeats().forEach(function(rec){
+      var ft=rec.ft,p=featPicks(ft,rec.base,rec.store);
+      ["options","skills","tools","langs","expertise"].forEach(function(k){
+        p[k].forEach(function(v){push(out[k],v);});
+      });
+      ["skills","tools","langs","armor","weapons","saves"].forEach(function(k){
+        var g=ft[k];
+        if(g&&g.fixed)g.fixed.forEach(function(v){push(out[k],v);});
+      });
+    });
+    return out;
+  }
+  function featResourceBonus(){
+    var res=(window.CC_RESOURCES&&window.CC_RESOURCES[state.slug])||[],out={};
+    if(!res.length)return out;
+    allChosenFeats().forEach(function(rec){
+      var txt=plainTags(entryText(rec.ft.entries||"")).toLowerCase();
+      res.forEach(function(r){
+        var nm=r.name.toLowerCase();
+        var re=new RegExp("gain (\\d+) "+nm.replace(/[^a-z0-9 ]/g,"."),"i");
+        var m=re.exec(txt);
+        if(m)out[r.name]=(out[r.name]||0)+parseInt(m[1],10);
+      });
+    });
+    return out;
+  }
+  /* ---------- a feat granted by the species ----------
+     Variant Human and Custom Lineage hand out a feat at level 1, and the 2024 Human's
+     Versatile trait hands out an Origin feat. The grant is recorded in the species data,
+     so the picker (and the feat's own ability increases) work from that. */
+  function raceFeatGrant(){
+    var race=currentRace(),lin=race?currentLineage(race):null;
+    return (lin&&lin.feats)||(race&&race.feats)||null;
+  }
+  function raceFeatOptions(){
+    var g=raceFeatGrant();
+    return (window.CC_FEATS||[]).filter(function(ft){
+      if(ft.edition!==state.edition)return false;
+      return (g&&g.category)?ft.category===g.category:true;
+    });
+  }
+  function raceFeatName(i){return state.raceChoices["race:feat:"+i]||"";}
+  // ability increases the chosen feat grants (Slasher's +1 Dex, and the like)
+  function raceFeatPicks(){
+    var g=raceFeatGrant();if(!g)return [];
+    var out=[];
+    for(var i=0;i<g.count;i++){
+      var ft=featByName(raceFeatName(i));
+      if(!ft||!ft.ability)continue;
+      for(var k in ft.ability.fixed)out.push({ability:k,amount:ft.ability.fixed[k],from:ft.name});
+      var ch=ft.ability.choose;
+      if(ch)for(var j=0;j<ch.count;j++){
+        var a=state.raceChoices["race:featab:"+i+":"+j];
+        if(a)out.push({ability:a,amount:ch.amount,from:ft.name});
+      }
+    }
+    return out;
+  }
+  function raceFeatPending(){
+    var g=raceFeatGrant();if(!g)return false;
+    for(var i=0;i<g.count;i++){
+      var nm=raceFeatName(i);
+      if(!nm)return true;
+      var ft=featByName(nm);
+      if(ft&&ft.ability&&ft.ability.choose)
+        for(var j=0;j<ft.ability.choose.count;j++)if(!state.raceChoices["race:featab:"+i+":"+j])return true;
+      if(ft&&featPicksPending(ft,"race:feat"+i+":",state.raceChoices))return true;
+    }
+    return false;
+  }
+  function raceFeatHtml(){
+    var g=raceFeatGrant();if(!g)return "";
+    var opts=raceFeatOptions(),html="";
+    for(var i=0;i<g.count;i++){
+      var cur=raceFeatName(i);
+      html+='<div class="origin-picker"><label>'+(g.category?esc(g.category)+" feat":"Feat")+
+        " from your species"+(g.count>1?" ("+(i+1)+" of "+g.count+")":"")+"</label>"+
+        '<select class="race-feat" data-idx="'+i+'"><option value="">- Choose a feat -</option>'+
+        opts.map(function(ft){
+          return '<option value="'+esc(ft.name)+'"'+(cur===ft.name?" selected":"")+">"+esc(ft.name)+
+            (ft.category&&!g.category?" ("+esc(ft.category)+")":"")+"</option>";
+        }).join("")+"</select>";
+      var ft=featByName(cur);
+      if(ft){
+        if(ft.entries&&ft.entries.length)html+='<div class="choice-desc">'+ft.entries.map(renderEntry).join("")+"</div>";
+        html+=featPicksHtml(ft,"race:feat"+i+":",state.raceChoices,"race-featpick");
+        if(ft.ability){
+          var fixedTxt=[],k;
+          for(k in ft.ability.fixed)fixedTxt.push(k+" +"+ft.ability.fixed[k]);
+          if(fixedTxt.length)html+='<div class="choice-desc">Grants '+esc(fixedTxt.join(", "))+".</div>";
+          var ch=ft.ability.choose;
+          if(ch)for(var j=0;j<ch.count;j++){
+            var curA=state.raceChoices["race:featab:"+i+":"+j]||"",others=[];
+            for(var q=0;q<ch.count;q++){if(q!==j){var v=state.raceChoices["race:featab:"+i+":"+q];if(v)others.push(v);}}
+            html+='<select class="race-featab" data-idx="'+i+'" data-sub="'+j+'">'+
+              '<option value="">- '+esc(ft.name)+": +"+ch.amount+' to which ability? -</option>'+
+              ch.from.map(function(a){
+                return '<option value="'+a+'"'+(others.indexOf(a)>=0?" disabled":"")+(curA===a?" selected":"")+">"+a+" +"+ch.amount+"</option>";
+              }).join("")+"</select>";
+          }
+        }
+      }
+      html+="</div>";
+    }
+    return html;
+  }
   function raceSelectHtml(group,pool,count,label){
     var chosen=[];for(var i=0;i<count;i++)chosen.push(state.raceChoices[group+":"+i]||"");
     var picked=chosen.filter(Boolean).length;
@@ -1070,7 +1448,7 @@
     var chooseList=[];
     race.ability.choose.forEach(function(c){chooseList.push({src:"asi",c:c});});
     if(lin)lin.ability.choose.forEach(function(c){chooseList.push({src:"linasi",c:c});});
-    var senses=(lin&&lin.senses&&lin.senses.length)?lin.senses:race.senses;
+    var senses=sensesList();
     var resist=race.resist.concat(lin?lin.resist:[]);
     var skills=race.skills,langs=mergedLanguages(race,lin);
     var spells=race.spells.concat(lin?lin.spells:[]);
@@ -1132,16 +1510,12 @@
     });
     spellChoices.forEach(function(lbl){s+='<p class="prof-line tag-note">Plus choose '+esc(lbl)+" — pickable in the Spells step (coming later).</p>";});
     if(scAbility){s+=raceSelectHtml("race:scability",scAbility,1,"Spellcasting ability for racial spells");if(raceChoiceCount("race:scability",1)<1)pending=true;}
+    var _rf=raceFeatHtml();
+    if(_rf){s+=_rf;if(raceFeatPending())pending=true;}
 
     var html=panelHtml("Species Traits & Grants",srcTag(race.source),0,"",s,"race:summary:"+race.name+race.source,pending);
 
-    if(race.lineages.length){
-      var opts='<option value="">— Choose —</option>'+race.lineages.map(function(l){
-        var a=abilShort(combineAbil(race.ability,l.ability));
-        return '<option value="'+esc(l.name)+'"'+(state.raceLineage===l.name?" selected":"")+' title="'+esc(sourceName(l.source))+'">'+esc(l.name+(a?" ["+a+"]":""))+"</option>";
-      }).join("");
-      html+=panelHtml("Lineage / Subrace","",1,"",'<div class="origin-picker"><label>Choose your lineage</label><select id="lineageSelect">'+opts+"</select></div>","race:lineage:"+race.name+race.source,!state.raceLineage);
-    }
+    // (lineage/subrace is chosen up front in the species dropdown, so no separate picker here)
     if(race.ancestry){
       var cur=state.raceChoices["race:ancestry:0"]||"";
       var aopts='<option value="">— Choose —</option>'+race.ancestry.rows.map(function(r){
@@ -1166,6 +1540,28 @@
       sel.addEventListener("click",function(e){e.stopPropagation();});
       sel.addEventListener("change",function(e){state.raceChoices[sel.getAttribute("data-group")+":"+sel.getAttribute("data-idx")]=e.target.value||"";render();});
     });
+    Array.prototype.forEach.call(host.querySelectorAll(".race-feat"),function(sel){
+      sel.addEventListener("click",function(e){e.stopPropagation();});
+      sel.addEventListener("change",function(e){
+        var i=sel.getAttribute("data-idx");
+        state.raceChoices["race:feat:"+i]=e.target.value||"";
+        for(var q=0;q<4;q++)delete state.raceChoices["race:featab:"+i+":"+q];   // its ability picks no longer apply
+        render();
+      });
+    });
+    Array.prototype.forEach.call(host.querySelectorAll(".race-featpick"),function(sel){
+      sel.addEventListener("click",function(e){e.stopPropagation();});
+      sel.addEventListener("change",function(e){
+        state.raceChoices[sel.getAttribute("data-key")]=e.target.value||"";render();
+      });
+    });
+    Array.prototype.forEach.call(host.querySelectorAll(".race-featab"),function(sel){
+      sel.addEventListener("click",function(e){e.stopPropagation();});
+      sel.addEventListener("change",function(e){
+        state.raceChoices["race:featab:"+sel.getAttribute("data-idx")+":"+sel.getAttribute("data-sub")]=e.target.value||"";
+        render();
+      });
+    });
     Array.prototype.forEach.call(host.querySelectorAll(".race-custom-mode"),function(sel){
       sel.addEventListener("click",function(e){e.stopPropagation();});
       sel.addEventListener("change",function(){
@@ -1180,15 +1576,6 @@
         state.raceChoices["race:custom:a"+sel.getAttribute("data-idx")]=sel.value||"";render();
       });
     });
-    var ls=host.querySelector("#lineageSelect");
-    if(ls){
-      ls.addEventListener("click",function(e){e.stopPropagation();});
-      ls.addEventListener("change",function(e){
-        state.raceLineage=e.target.value||null;
-        for(var k in state.raceChoices){if(k.indexOf("race:linasi")===0||k.indexOf("race:scability")===0)delete state.raceChoices[k];}
-        render();
-      });
-    }
   }
 
   /* ---------- ability scores ---------- */
@@ -1233,6 +1620,8 @@
         featAsiPicks(f.level).forEach(function(p){add(p.ability,p.from+" (level "+f.level+")",p.amount);});
       });
     }
+    // a feat the species grants (Variant Human, Custom Lineage, 2024 Human) can raise scores too
+    raceFeatPicks().forEach(function(p){add(p.ability,p.from+" (species feat)",p.amount);});
     return map;
   }
   function pbRemaining(){var u=0;ABILITIES.forEach(function(a){u+=(POINT_BUY_COST[state.abilities.base[a]]||0);});return 27-u;}
@@ -1867,6 +2256,7 @@
       if(race.skills.choose)for(var i=0;i<race.skills.choose.count;i++)add(state.raceChoices["race:skill:"+i]);
       if(race.skills.any)for(var i=0;i<race.skills.any;i++)add(state.raceChoices["race:skillany:"+i]);}
     featureGrants().skills.forEach(add);          // skills granted outright by a feature's text
+    if(!_inFeatSlots)featGrantsAll().skills.forEach(add);   // and a skill a feat grants or lets you pick
     return set;
   }
   /* ---------- expertise ----------
@@ -1884,6 +2274,7 @@
   var EXPERTISE_PICKS=2;
   function expertiseSkills(){
     var set={};
+    featGrantsAll().expertise.forEach(function(s){if(s)set[s]=1;});   // e.g. Skill Expert
     expertiseFeatures().forEach(function(f){
       for(var i=0;i<EXPERTISE_PICKS;i++){
         var v=state.choices["expertise:"+f.level+":"+i];
@@ -1907,6 +2298,95 @@
     if(d.kind==="vulnerable")return "Vulnerable "+d.value;
     if(d.kind==="condImmune")return "Immune "+d.value+" (cond.)";
     return d.value;
+  }
+  /* A resistance/sense a feature states is CONDITIONAL if a governing sentence — this one or up
+     to three before it — activates it: a rage, a stance, a form, an action, or a timed buff.
+     e.g. the base Rage feature's "While raging, you gain the following benefits:" sits a few
+     bullets above its damage-resistance line. A feature that explicitly grants the benefit even
+     when not raging (Path of the Infernal's fire resistance) is treated as permanent. */
+  var COND_GOV=/while raging|while your rage is active|while active|your rage follows the rules|while in (?:this|that) form|while (?:you are |you're )?transformed|while you(?:'re| are)? using it|for \d+ (?:minute|hour)|gain(?:ing)? the following benefits for|benefits for \d|as (?:a|an) (?:bonus )?action|use your (?:action|reaction)|until the (?:end|start)|during that (?:time|turn)/i;
+  var COND_NEG=/even while (?:you(?:'re| are)? )?not raging|even when not raging|while you(?:'re| are)? not raging/i;
+  function condGovernor(sents,j,extra){
+    for(var k=j;k>=0&&k>=j-3;k--){
+      var s=sents[k];
+      if(COND_NEG.test(s))return false;            // explicitly applies even when not raging
+      if(COND_GOV.test(s)||(extra&&extra.test(s)))return true;
+    }
+    return false;
+  }
+  /* permanent damage resistances/immunities stated in a feature's text — Radiant Soul, Necrotic
+     Husk, Inured to Undeath, Guarded Mind, Saint of Forge and Fire, Storm Soul, etc. A grant is
+     taken only when every listed word is a real damage type (so "all" / "the <type> associated
+     with..." are ignored) and no governing sentence makes it conditional. A trailing qualifier
+     ("from nonmagical attacks") is kept so the limit stays visible. */
+  function featureDamageDefences(){
+    var out={resist:[],immune:[]},TYPES={};
+    DAMAGE_TYPES.forEach(function(t){TYPES[t.toLowerCase()]=t;});
+    function parseList(str){
+      var parts=str.toLowerCase().replace(/\band\b/g,",").split(","),got=[],ok=true;
+      parts.forEach(function(p){p=p.replace(/[^a-z]/g,"");if(!p)return;if(TYPES[p])got.push(TYPES[p]);else ok=false;});
+      return (ok&&got.length)?got:null;
+    }
+    featuresAndTraits().forEach(function(f){
+      var txt=plainTags(entryText(f.entries||"")),sents=txt.split(/\.\s+/),j;
+      for(j=0;j<sents.length;j++){
+        if(condGovernor(sents,j))continue;
+        var s=sents[j];
+        [["resist",/you (?:have|gain) resistance to ([a-z, ]+?) damage(?:\s+(from [a-z ]+?))?(?=[.,;]|$)/gi],
+         ["immune",/you (?:have|gain|are) (?:immune|immunity) to ([a-z, ]+?) damage(?:\s+(from [a-z ]+?))?(?=[.,;]|$)/gi]
+        ].forEach(function(pr){
+          var re=pr[1],m;re.lastIndex=0;
+          while((m=re.exec(s))){
+            var types=parseList(m[1]);if(!types)continue;
+            var qual=m[2]?m[2].replace(/\s+/g," ").trim():"";
+            if(qual)out[pr[0]].push(types.join(", ")+" ("+qual+")");
+            else types.forEach(function(t){out[pr[0]].push(t);});
+          }
+        });
+      }
+    });
+    return out;
+  }
+  /* darkvision a feature grants as a permanent sense — Umbral Sight, Eyes of the Dark, Eyes of
+     Night, Shadow monk Darkvision. Skips spell-list mentions ("cast darkness, darkvision"),
+     action/toggle grants (The Third Eye), form grants (Improved Dragon Shape), and "one of the
+     following" choices (Aspect of the Wilds). {base, bonus, from} — bonus is the "if you already
+     have darkvision, its range increases by N" amount. */
+  function featureDarkvision(){
+    var out=[],extra=/one of the following|choose|wild shape|dragon shape/i;
+    featuresAndTraits().forEach(function(f){
+      var txt=plainTags(entryText(f.entries||""));
+      // darkvision that comes with a shapechange is a form benefit, not a standing sense
+      if(/dragon shape|wild shape|while (?:you are |you're )?transformed|you transform into/i.test(txt))return;
+      var sents=txt.split(/\.\s+/),j;
+      for(j=0;j<sents.length;j++){
+        var s=sents[j],m=/you (?:have|gain) darkvision[^.]*?(\d+)\s*f(?:ee|oo)?t/i.exec(s);
+        if(!m||condGovernor(sents,j,extra))continue;
+        var bctx=s+" "+(sents[j+1]||""),bm=/increases by (\d+)\s*f(?:ee|oo)?t/i.exec(bctx);
+        out.push({base:parseInt(m[1],10),bonus:bm?parseInt(bm[1],10):0,from:f.name});
+      }
+    });
+    return out;
+  }
+  /* the senses shown on the sheet: species/lineage senses, plus any darkvision a feature grants
+     (merged into a single range — a feature that extends existing darkvision adds its bonus). */
+  function sensesList(){
+    var race=currentRace(),lin=race?currentLineage(race):null;
+    var base=(lin&&lin.senses&&lin.senses.length)?lin.senses.slice():(race?(race.senses||[]).slice():[]);
+    var dv=featureDarkvision();
+    if(!dv.length)return base;
+    var rdv=0,idx=-1,i;
+    for(i=0;i<base.length;i++){var mm=/darkvision\D*(\d+)/i.exec(base[i]);if(mm){rdv=parseInt(mm[1],10);idx=i;}}
+    var best=rdv,seen={},froms=[];
+    dv.forEach(function(g){
+      var cand=g.bonus?(rdv?rdv+g.bonus:g.base):g.base;
+      if(cand>best)best=cand;
+      if(!seen[g.from]){seen[g.from]=1;froms.push(g.from);}
+    });
+    if(best<=rdv&&idx>=0)return base;               // features add nothing beyond racial darkvision
+    var label="Darkvision "+best+" ft. ("+froms.join(", ")+")";
+    if(idx>=0)base[idx]=label; else base=base.concat([label]);
+    return base;
   }
   function defences(){
     var race=currentRace(),lin=race?currentLineage(race):null;
@@ -1934,6 +2414,9 @@
         if(!seen["c"+c]){seen["c"+c]=1;out.condImmune.push(capital(c));}
       }
     });
+    var fdd=featureDamageDefences();               // permanent resist/immune from feature text
+    out.resist=u(out.resist,fdd.resist);
+    out.immune=u(out.immune,fdd.immune);
     var ft=fxTotals();
     out.fx=[];
     if(ft.resist.length)out.fx.push({text:"Resistance to "+ft.resist.join(", ")+" damage",from:ft.sources.resist.join(", ")});
@@ -2068,6 +2551,8 @@
       for(var i=0;i<(bg.langs.any||0);i++)add(state.bgChoices["langAny:"+i]);
       if(bg.langs.choose)for(var i=0;i<bg.langs.choose.count;i++)add(state.bgChoices["langChoose:"+i]);}
     featureGrants().languages.forEach(add);       // languages a feature grants (e.g. Rune Knight → Giant)
+    featureLangPicks().forEach(add);              // a language chosen from a feature's "of your choice"
+    featGrantsAll().langs.forEach(add);           // a language a feat grants
     (state.customLanguages||[]).forEach(add);
     return out;
   }
@@ -2240,6 +2725,46 @@
     if(e instanceof Array){var s="",i;for(i=0;i<e.length;i++)s+=entryText(e[i]);return s;}
     if(typeof e==="object"){var s="",k;for(k in e){if(k==="type"||k==="name"||k==="source")continue;s+=entryText(e[k]);}return s;}
     return "";
+  }
+  /* Readable plain text for an entry tree - used by the PDF/PowerPoint export.
+     entryText() above concatenates every value it finds, which is right for classifying
+     a feature but leaks layout keys ("list-hang-notitle") into anything shown to a
+     reader. This walks the structure properly instead, and resolves {@tags}. */
+  function unesc(s){
+    return String(s).replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&mdash;/g,"-")
+                    .replace(/&ndash;/g,"-").replace(/&nbsp;/g," ")
+                    .replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&amp;/g,"&");
+  }
+  function entryPlain(e){
+    if(e==null)return "";
+    if(typeof e==="string")return unesc(plainTags(e));
+    if(e instanceof Array){
+      var parts=[],i;
+      for(i=0;i<e.length;i++){var t=entryPlain(e[i]);if(t)parts.push(t);}
+      return parts.join("\n");
+    }
+    if(typeof e!=="object")return "";
+    var ty=e.type;
+    if(ty==="refClassFeature"||ty==="refSubclassFeature")return "";   // expanded elsewhere
+    if(ty==="image")return "";
+    if(ty==="list"){
+      var out=[],its=e.items||[];
+      for(var j=0;j<its.length;j++){var s=entryPlain(its[j]);if(s)out.push("- "+s.replace(/\n/g,"\n  "));}
+      return out.join("\n");
+    }
+    if(ty==="table"){
+      var rows=[],lab=e.colLabels||[];
+      if(lab.length)rows.push(lab.map(function(c){return unesc(plainTags(String(c)));}).join("  |  "));
+      (e.rows||[]).forEach(function(r){
+        if(r instanceof Array)rows.push(r.map(function(c){return entryPlain(c).replace(/\n/g," ");}).join("  |  "));
+      });
+      return (e.caption?unesc(plainTags(e.caption))+"\n":"")+rows.join("\n");
+    }
+    // entries / item / section / inset / quote: a heading plus its body
+    var body=entryPlain(e.entries||e.entry||e.items||[]);
+    var nm=e.name?unesc(plainTags(String(e.name))):"";
+    if(nm&&body)return nm+". "+body;
+    return nm||body;
   }
   // Text used to classify a feature's action economy. Skips "choose one of these"
   // sub-option menus (lists/items/options): a reaction buried in one optional
@@ -2581,19 +3106,70 @@
   function hasStyle(nm){var s=fightingStyles(),i;for(i=0;i<s.length;i++)if(s[i].indexOf(nm)>=0)return true;return false;}
   function scaledDie(sc,L){var best="",bl=-1;for(var k in sc){var n=+k;if(n<=L&&n>bl){bl=n;best=sc[k];}}return best;}
   function capital(s){return s?s.charAt(0).toUpperCase()+s.slice(1):"";}
-  function actionsCardHtml(){
+  /* The attack table on the sheet: equipped weapons, the unarmed strike, feature attacks
+     (Bite/Claws) and damaging spells, each already carrying its ability modifier, magic
+     bonus, fighting style, Martial Arts die and active effects. Returned as data so the
+     sheet and the PowerPoint export show exactly the same rows. */
+  /* The Features & Traits list exactly as the sheet shows it: every class, subclass,
+     referenced, species and lineage feature, carrying the player's own selections
+     (chosen Metamagic options, the feat taken instead of an ASI, and so on). Shared
+     with the PowerPoint export so the printed page matches the expanded card. */
+  function featureCards(){
+    var fd=state.fdata;if(!fd)return [];
+    var race=currentRace(),lin=race?currentLineage(race):null;
+    var featItems=[],seenCh={},refSrc=[];
+    (fd.classFeatures||[]).forEach(function(f){
+      if(f.level>state.level||!optEnabled(f))return;    // optional features can be switched off
+      var isGroup=fd.optionLists&&fd.optionLists[f.name]&&f.name!=="Ability Score Improvement";
+      if(isGroup){if(seenCh[f.name])return;seenCh[f.name]=1;}  // show a repeating choice feature (e.g. Metamagic) once
+      var nm=f.name+(f.optional?" (optional)":"")+(f.name==="Ability Score Improvement"?" ("+ordinal(f.level)+" level)":"");
+      var og=state.className+" — class feature, level "+f.level+(f.optional?" (optional, "+sourceName(f.source)+")":"");
+      featItems.push({name:nm,entries:featEntriesWithChoice(f),origin:og});
+      refSrc.push({entries:f.entries,_origin:og});
+    });
+    var chosen=state.subclassName?(fd.subclasses||[]).filter(function(s){return s.name===state.subclassName;})[0]:null;
+    if(chosen)(chosen.features||[]).forEach(function(f){
+      if(f.level>state.level)return;
+      var og=state.subclassName+" — subclass feature, level "+f.level+" ("+sourceName(chosen.source)+")";
+      featItems.push({name:f.name+" ["+state.subclassName+"]",entries:featEntriesWithChoice(f),origin:og});
+      refSrc.push({entries:f.entries,_origin:og});
+    });
+    // features a listed feature only points at, e.g. Form of the Beast inside Path of the Beast
+    expandFeatureRefs(refSrc).forEach(function(f){
+      featItems.push({name:f.name+(state.subclassName&&f._origin.indexOf("subclass")>=0?" ["+state.subclassName+"]":""),
+                      entries:f.entries,origin:f._origin});
+    });
+    if(race)(race.traits||[]).forEach(function(t){featItems.push({name:t.name,entries:t.entries,origin:race.name+" ("+sourceName(race.source)+") — species trait"});});
+    if(lin)(lin.traits||[]).forEach(function(t){featItems.push({name:t.name,entries:t.entries,origin:lin.name+" — lineage trait"});});
+    (function(){                                  // the feat a species hands out
+      var g=raceFeatGrant();if(!g)return;
+      for(var i=0;i<g.count;i++){
+        var ft=featByName(raceFeatName(i));
+        if(ft)featItems.push({name:"Feat: "+ft.name,entries:ft.entries||[],
+          origin:(lin?lin.name:(race?race.name:"Species"))+" — feat from your species"});
+      }
+    })();
+    // the options a feat let you choose (Metamagic Adept's two Metamagic options, and so on)
+    allChosenFeats().forEach(function(rec){
+      var p=featPicks(rec.ft,rec.base,rec.store);
+      (rec.ft.optProg||[]).forEach(function(prog){
+        p.options.forEach(function(nm){
+          var o=optFeatureList(prog.types,rec.ft.edition).filter(function(x){return x.name===nm;})[0];
+          if(o)featItems.push({name:nm+" ["+prog.name+"]",entries:o.entries||[],
+            origin:rec.ft.name+" — "+prog.name+" option"});
+        });
+      });
+    });
+    return featItems;
+  }
+  function attackRows(){
     var prof=profBonus(),strM=abMod(totalScore("Strength")),dexM=abMod(totalScore("Dexterity"));
     var info=spellInfo(),castMod=info?abMod(totalScore(info.ability)):0,spAtk=info?prof+castMod:null,spDC=info?8+prof+castMod:null;
-    // A row may carry its full rules text; when it does it gets a chevron and expands
-    // in place, like the Bonus Actions list. The origin stays as the hover tooltip.
+    var out=[];
+    // same call shape as the sheet's renderer, but it collects the row instead of drawing it
     function row(name,sub,range,hit,dmg,notes,why,desc){
-      var has=desc&&desc.length;
-      var h='<tr class="atk-row'+(has?" has-desc":"")+(why?" has-origin":"")+'"'+(why?' title="'+esc(why)+'"':"")+'><td><div class="atk-name">'+esc(name)+
-        (has?' <span class="atk-chev">&#9662;</span>':"")+"</div>"+
-        (sub?'<div class="atk-sub">'+esc(sub)+"</div>":"")+"</td><td>"+esc(range||"—")+
-        '</td><td class="atk-hit">'+hit+"</td><td>"+esc(dmg)+'</td><td class="atk-notes">'+esc(notes||"")+"</td></tr>";
-      if(has)h+='<tr class="atk-desc"><td colspan="5"><div class="atk-desc-in">'+desc.map(renderEntry).join("")+"</div></td></tr>";
-      return h;
+      out.push({name:name,sub:sub,range:range,hit:hit,dmg:dmg,notes:notes||"",why:why||"",desc:desc||[]});
+      return "";
     }
     function spellDesc(s){
       var hdr=["{@b Casting Time:} "+(s.time||"—")+"  ·  {@b Range:} "+(s.range||"—"),
@@ -2686,9 +3262,27 @@
                   state.className+" spell — "+sourceName(s.source),spellDesc(s));
       });
     }
-    // attacks per action (Extra Attack)
+    return out;
+  }
+  // how many attacks the Attack action grants (Extra Attack stacks)
+  function attacksPerAction(){
     var extra=0;(state.fdata&&state.fdata.classFeatures||[]).forEach(function(f){if(f.level<=state.level&&/Extra Attack/i.test(f.name))extra++;});
-    var apa=1+extra;
+    return 1+extra;
+  }
+  function actionsCardHtml(){
+    // A row may carry its full rules text; when it does it gets a chevron and expands
+    // in place, like the Bonus Actions list. The origin stays as the hover tooltip.
+    function row(name,sub,range,hit,dmg,notes,why,desc){
+      var has=desc&&desc.length;
+      var h='<tr class="atk-row'+(has?" has-desc":"")+(why?" has-origin":"")+'"'+(why?' title="'+esc(why)+'"':"")+'><td><div class="atk-name">'+esc(name)+
+        (has?' <span class="atk-chev">&#9662;</span>':"")+"</div>"+
+        (sub?'<div class="atk-sub">'+esc(sub)+"</div>":"")+"</td><td>"+esc(range||"—")+
+        '</td><td class="atk-hit">'+hit+"</td><td>"+esc(dmg)+'</td><td class="atk-notes">'+esc(notes||"")+"</td></tr>";
+      if(has)h+='<tr class="atk-desc"><td colspan="5"><div class="atk-desc-in">'+desc.map(renderEntry).join("")+"</div></td></tr>";
+      return h;
+    }
+    var rows=attackRows().map(function(r){return row(r.name,r.sub,r.range,r.hit,r.dmg,r.notes,r.why,r.desc);}).join("");
+    var apa=attacksPerAction();
     var html='<div class="apa">Attacks per Action: <b>'+apa+"</b></div>";
     html+='<table class="atk-table"><thead><tr><th>Attack</th><th>Range</th><th>Hit / DC</th><th>Damage</th><th>Notes</th></tr></thead><tbody>'+rows+"</tbody></table>";
     var ae=actionEconomy();
@@ -2789,7 +3383,7 @@
     var abilCells=ABILITIES.map(function(a){var t=totalScore(a);return '<div class="abil-cell"><div class="aname">'+ABIL_ABBR[a]+'</div><div class="amod">'+modStr(abMod(t))+'</div><div class="ascore">'+t+"</div></div>";}).join("");
     var sp=savingProfs();
     var saveRows=ABILITIES.map(function(a){var m=abMod(totalScore(a))+(sp[a]?prof:0);return '<div class="line-row"><span class="dot'+(sp[a]?" on":"")+'"></span><span class="ab">'+ABIL_ABBR[a]+'</span><span>'+a+'</span><span class="lv">'+modStr(m)+"</span></div>";}).join("");
-    var senses=(lin&&lin.senses&&lin.senses.length)?lin.senses:(race?race.senses:[]);
+    var senses=sensesList();
     var fd=state.fdata,pf=fd.proficiencies||{},langs=languagesAll();
     var langChips=(state.customLanguages||[]).map(function(l,i){return '<span class="lang-chip">'+esc(l)+' <span class="lang-x" data-i="'+i+'">&times;</span></span>';}).join("");
     var known={};langs.forEach(function(l){known[String(l).toLowerCase()]=1;});
@@ -2803,7 +3397,9 @@
       }).join("")+"</optgroup>";
     });
     var fg=featureGrants();
-    var profBody=profBlock("Armor","armor",withFeatureProfs(pf.armor,fg.armor))+profBlock("Weapons","weapons",withFeatureProfs(pf.weapons,fg.weapons))+profBlock("Tools","tools",withFeatureProfs(pf.tools,fg.tools))+
+    var _fga=featGrantsAll();
+    var toolExtra=fg.tools.concat(featureToolPicks(),_fga.tools);   // feature grants, feature picks, feat grants
+    var profBody=profBlock("Armor","armor",withFeatureProfs(pf.armor,fg.armor.concat(_fga.armor)))+profBlock("Weapons","weapons",withFeatureProfs(pf.weapons,fg.weapons.concat(_fga.weapons)))+profBlock("Tools","tools",withFeatureProfs(pf.tools,toolExtra))+
       '<div class="prof-blk"><div class="pl">Languages</div>'+esc(langs.join(", ")||"—")+
       '<div class="lang-edit">'+langChips+
         '<select id="langPick">'+langOpts+'</select>'+
@@ -2827,7 +3423,8 @@
 
     // RIGHT: resources, attacks, spells, inventory, features, background
     var res=(window.CC_RESOURCES&&window.CC_RESOURCES[state.slug])||[];
-    var resBody=res.map(function(r){var n=r.values[state.level-1]||0;if(!n)return "";var pips="";for(var i=0;i<n;i++){var k=r.name+":"+i;pips+='<span class="pip'+(state.sheet.res[k]?" used":"")+'" data-k="'+esc(k)+'"></span>';}var fk="";fxAvailable().forEach(function(e){if(!fk&&r.name.toLowerCase().indexOf(e.key.toLowerCase())===0)fk=e.key;});
+    var _rb=featResourceBonus();
+    var resBody=res.map(function(r){var n=(r.values[state.level-1]||0)+(_rb[r.name]||0);if(!n)return "";var pips="";for(var i=0;i<n;i++){var k=r.name+":"+i;pips+='<span class="pip'+(state.sheet.res[k]?" used":"")+'" data-k="'+esc(k)+'"></span>';}var fk="";fxAvailable().forEach(function(e){if(!fk&&r.name.toLowerCase().indexOf(e.key.toLowerCase())===0)fk=e.key;});
       var rbox=fk?'<span class="fx-box'+(fxIsOn(fk)?" on":"")+'" data-fx-set="'+esc(fk)+'" title="'+esc(fxIsOn(fk)?"Active — click to end":"Click when you use this")+'"></span>':"";
       return '<div style="margin-bottom:10px"><div class="res-name">'+rbox+esc(r.name)+' <span class="res-sub">('+n+')</span></div><div class="pips">'+pips+"</div></div>";}).join("");
     var cRes=shCard("Class Resources",resBody);
@@ -2910,31 +3507,7 @@
     invBody+='<input type="text" id="invSearch" placeholder="Search all items…" value="'+esc(state.sheet.invQ||"")+'"><div id="invResults" class="inv-results"></div>';
     invBody+='<div class="lang-add" style="margin:8px 0"><input type="text" id="invCustom" placeholder="Add a custom item…"><button class="btn" id="addCustomItem">Add</button></div>';
     var cInv=shCard("Inventory",invBody);
-    // features & traits (expandable, with descriptions + the player's choices)
-    var featItems=[],seenCh={},refSrc=[];
-    (fd.classFeatures||[]).forEach(function(f){
-      if(f.level>state.level||!optEnabled(f))return;    // optional features can be switched off
-      var isGroup=fd.optionLists&&fd.optionLists[f.name]&&f.name!=="Ability Score Improvement";
-      if(isGroup){if(seenCh[f.name])return;seenCh[f.name]=1;}  // show a repeating choice feature (e.g. Metamagic) once
-      var nm=f.name+(f.optional?" (optional)":"")+(f.name==="Ability Score Improvement"?" ("+ordinal(f.level)+" level)":"");
-      var og=state.className+" — class feature, level "+f.level+(f.optional?" (optional, "+sourceName(f.source)+")":"");
-      featItems.push({name:nm,entries:featEntriesWithChoice(f),origin:og});
-      refSrc.push({entries:f.entries,_origin:og});
-    });
-    var chosen=state.subclassName?(fd.subclasses||[]).filter(function(s){return s.name===state.subclassName;})[0]:null;
-    if(chosen)(chosen.features||[]).forEach(function(f){
-      if(f.level>state.level)return;
-      var og=state.subclassName+" — subclass feature, level "+f.level+" ("+sourceName(chosen.source)+")";
-      featItems.push({name:f.name+" ["+state.subclassName+"]",entries:featEntriesWithChoice(f),origin:og});
-      refSrc.push({entries:f.entries,_origin:og});
-    });
-    // features a listed feature only points at, e.g. Form of the Beast inside Path of the Beast
-    expandFeatureRefs(refSrc).forEach(function(f){
-      featItems.push({name:f.name+(state.subclassName&&f._origin.indexOf("subclass")>=0?" ["+state.subclassName+"]":""),
-                      entries:f.entries,origin:f._origin});
-    });
-    if(race)(race.traits||[]).forEach(function(t){featItems.push({name:t.name,entries:t.entries,origin:race.name+" ("+sourceName(race.source)+") — species trait"});});
-    if(lin)(lin.traits||[]).forEach(function(t){featItems.push({name:t.name,entries:t.entries,origin:lin.name+" — lineage trait"});});
+    var featItems=featureCards();
     var fxKeys={};fxAvailable().forEach(function(e){fxKeys[e.key]=1;});
     featItems.forEach(function(fi){                 // a checkbox beside anything you switch on in play
       var bare=fi.name.replace(/\s*\[[^\]]*\]\s*$/,"").replace(/\s*\(optional\)\s*$/,"");
@@ -3391,8 +3964,8 @@
     // fold any added proficiencies in after the granted ones
     var _fg=featureGrants();
     function profLine(txt,key){
-      var extra=(_fg[key]||[]).concat(customProfs(key));   // feature grants + hand-added
-      var base=withFeatureProfs(txt||"None",_fg[key]);
+      var granted=(_fg[key]||[]).concat(key==="tools"?featureToolPicks():[],featGrantsAll()[key]||[]);
+      var base=withFeatureProfs(txt||"None",granted);
       return plainTags(base)+(customProfs(key).length?", "+customProfs(key).join(", "):"");
     }
     setT("ProficienciesLang","Armor: "+profLine(pf.armor,"armor")+"\nWeapons: "+profLine(pf.weapons,"weapons")+"\nTools: "+profLine(pf.tools,"tools")+"\nLanguages: "+languagesAll().join(", "));
@@ -3421,14 +3994,327 @@
     var fields=(window.CC_PDF_FIELDS.spellFields[lvlKey])||[];
     for(var i=0;i<names.length&&i<fields.length;i++)if(names[i])setT(fields[i],names[i]);
   }
+  /* ---------- export tags ----------
+     Every value the character-sheet template asks for, keyed by its tag name. Both the
+     in-app PDF export and the PowerPoint pipeline (tools/cc_fetch.js) read this, so the
+     printed sheet and the generated deck can never drift apart. */
+  function exportTags(){
+    var T={},i;
+    function sign(n){return (n>=0?"+":"")+n;}
+    function sg(a){return sign(abMod(totalScore(a)));}
+    var AB=["Strength","Dexterity","Constitution","Intelligence","Wisdom","Charisma"],
+        UP="ABCDEF",LO="abcdef";
+    for(i=0;i<6;i++){T[UP.charAt(i)]=sg(AB[i]);T[LO.charAt(i)]=totalScore(AB[i]);}
+    var prof=profBonus(),bg=currentBg();
+    T.character_name=state.name||"";
+    T["class"]=state.className||"";
+    T.subclass=state.subclassName||"";
+    T.level=state.level;
+    T.background=state.bgIsCustom?(state.bgCustomName||""):(bg?bg.name:"");
+    T.species=speciesLabel();
+    T.alignment=(state.details&&state.details.alignment)||"";
+    T.AC=computeAC();
+    T.PF="+"+prof;
+    T.WS=speedText();
+    T.MHP=maxHP();
+    T.INI=sg("Dexterity");
+    var conm=abMod(totalScore("Constitution"));
+    T.HIT_DIE=state.level+"d"+state.hdFaces+(conm>=0?" + "+conm:" - "+(-conm));
+    var dcAb=dcAbility();
+    T.ability_dc=dcAb||"";
+    T.a_dc=dcAb?abilitySaveDc():"";
+    // saving throws and skills: a dot for proficiency, plus the total
+    var sp=savingProfs(),KEYS=["str","dex","con","int","wis","cha"];
+    for(i=0;i<6;i++){
+      var pr=!!sp[AB[i]];
+      T["st_"+KEYS[i]]=pr?"1":"0";
+      T["stv_"+KEYS[i]]=sign(abMod(totalScore(AB[i]))+(pr?prof:0));
+    }
+    var SK=[["a","Acrobatics"],["b","Animal Handling"],["c","Arcana"],["d","Athletics"],
+            ["e","Deception"],["f","History"],["g","Insight"],["h","Intimidation"],
+            ["i","Investigation"],["j","Medicine"],["k","Nature"],["l","Perception"],
+            ["m","Performance"],["n","Persuasion"],["o","Religion"],["p","Sleight of Hand"],
+            ["q","Stealth"],["r","Survival"]];
+    var ps=proficientSkills();
+    for(i=0;i<SK.length;i++){
+      T["chk_"+SK[i][0]]=ps[SK[i][1]]?"1":"0";
+      T["chkv_"+SK[i][0]]=sign(skillBonus(SK[i][1]));
+    }
+    T.senses=(sensesList()||[]).concat(["Passive Perception "+passiveScore("Perception")]).join("\n");
+    var dl=defencesSummaryLines();
+    T.defences=dl.length?dl.join("\n"):"-";
+    var pf=(state.fdata&&state.fdata.proficiencies)||{},fg=featureGrants();
+    function profLine(txt,key){
+      var granted=(fg[key]||[]).concat(key==="tools"?featureToolPicks():[],featGrantsAll()[key]||[]);
+      return plainTags(withFeatureProfs(txt||"None",granted));
+    }
+    T.prof_and_languages="Armor: "+profLine(pf.armor,"armor")+
+      "\nWeapons: "+profLine(pf.weapons,"weapons")+
+      "\nTools: "+profLine(pf.tools,"tools")+
+      "\nLanguages: "+(languagesAll().join(", ")||"-");
+    var inv=(state.equipment&&state.equipment.inventory)||[];
+    T.items=inv.map(function(it){return it.name+(it.qty>1?" x"+it.qty:"")+(it.equipped?" (equipped)":"");}).join("\n");
+    var cur=(state.equipment&&state.equipment.currency)||{};
+    T.gp=cur.gp||0;T.sp=cur.sp||0;
+    // action economy: the sheet's own attack rows, then the feature-driven lists
+    var ae=actionEconomy();
+    function names(list){return list.map(function(x){return x.name;});}
+    var lines=["Attacks per Action: "+attacksPerAction()];
+    attackRows().forEach(function(r){lines.push(r.name+"  "+r.hit+"  "+r.dmg+"  ("+(r.range||"-")+")");});
+    var fa=names(ae.action);
+    if(fa.length)lines=lines.concat([""],fa);
+    T.actions=lines.join("\n");
+    T.bonus_actions=names(ae.bonus).join("\n")||"-";
+    // reactions include spells cast as a reaction (Shield, Counterspell) - easy to miss
+    var reacts=names(ae.reaction),spKeys=[].concat((state.spells&&state.spells.cantrips)||[],(state.spells&&state.spells.spells)||[]);
+    spKeys.forEach(function(k){
+      var s=spellByKey(k);
+      if(s&&/reaction/i.test(String(s.time||""))){
+        var lbl=s.name+" (spell"+(s.level?", level "+s.level:" cantrip")+")";
+        if(reacts.indexOf(lbl)<0)reacts.push(lbl);
+      }
+    });
+    T.reactions=reacts.join("\n")||"-";
+    T.other_actions=names(ae.attack).map(function(n){return "On hit: "+n;}).join("\n")||"-";
+    // features & traits, exactly as the sheet's expanded card shows them
+    var blocks=featureCards().map(function(c){
+      var body=entryPlain(c.entries||[]).replace(/[ \t]+/g," ").replace(/\n{3,}/g,"\n\n");
+      return c.name+(c.origin?"  ["+c.origin+"]":"")+(body?"\n"+body:"");
+    });
+    if(dl.length)blocks.push("Defences\n"+dl.join("\n"));
+    T.features_and_traits=blocks.join("\n\n");
+    // spells, grouped by level, with the slots available at this level
+    var info=spellInfo(),byLvl={};
+    for(i=0;i<=9;i++)byLvl[i]=[];
+    if(info){
+      [].concat((state.spells&&state.spells.cantrips)||[],(state.spells&&state.spells.spells)||[]).forEach(function(k){
+        var s=spellByKey(k);
+        if(!s){byLvl[0].push(String(k).split("|")[0]);return;}
+        function pt(x){return plainTags(String(x||"-"));}
+        var meta=["Cast: "+pt(s.time),"Range: "+pt(s.range),
+                  "Components: "+pt(s.compFull||s.comp),"Duration: "+pt(s.duration)].join("   /   ");
+        var flags=[];
+        if(s.conc)flags.push("Concentration");
+        if(s.ritual)flags.push("Ritual");
+        if(s.save)flags.push("Save: "+s.save);
+        if(s.atk)flags.push("Attack roll");
+        var desc=entryPlain(s.entries||[]).replace(/[ \t]+/g," ").replace(/\n{3,}/g,"\n\n");
+        var hi=(s.higher&&s.higher.length)?entryPlain(s.higher).replace(/[ \t]+/g," "):"";
+        var out=[s.name+"  ("+(s.school||"")+(s.level===0?" cantrip":"")+")"+(flags.length?"  - "+flags.join(", "):""),meta];
+        if(desc)out.push(desc);
+        if(hi)out.push("At Higher Levels: "+hi);
+        byLvl[s.level].push(out.join("\n"));
+      });
+    }
+    T.spell_list_cantrips=byLvl[0].join("\n\n");
+    for(i=1;i<=9;i++)T["spell_list_level"+i]=byLvl[i].join("\n\n");
+    var slots={};
+    if(info&&info.sc&&info.sc.slots){
+      var sl=info.sc.slots;
+      if(sl.type==="slots"){
+        var row=sl.rows[state.level-1]||[];
+        for(i=1;i<=9;i++)if(row[i-1])slots[i]=row[i-1];
+      }else if(sl.type==="pact"){
+        var pc=sl.count[state.level-1]||0,plv=sl.level[state.level-1]||0;
+        if(pc)slots[plv]=pc;
+      }
+    }
+    for(i=1;i<=9;i++)T["nbr_of_available_level_"+i+"_slots"]=slots[i]||"";
+    return T;
+  }
+  /* Fill the sheet built from the PowerPoint template. Each form field carries a small
+     text template ("ACTIONS\n{actions}\n\nBONUS ACTIONS\n{bonus_actions}"), so headings
+     and values land together in one box. */
+  function fillSheetForm(form){
+    var F=window.CC_SHEET_FIELDS,T=exportTags(),name;
+    for(name in F){
+      var spec=F[name];
+      if(spec.cb){
+        try{if(T[spec.tags[0]]==="1")form.getCheckBox(name).check();else form.getCheckBox(name).uncheck();}catch(e){}
+        continue;
+      }
+      var txt=String(spec.t).replace(/\{([A-Za-z_0-9]+)\}/g,function(m,tag){
+        return T.hasOwnProperty(tag)?String(T[tag]):"";
+      });
+      try{
+        var fld=form.getTextField(name);
+        if(spec.ml){try{fld.enableMultiline();}catch(e){}}
+        try{fld.setAlignment(spec.q===1?1:(spec.q===2?2:0));}catch(e){}
+        fld.setText(txt);
+      }catch(e){}
+    }
+  }
+  /* ---------- printable sheet ----------
+     Opens a plain, self-contained page holding everything the character has - the stats,
+     the attack table, every spell and every feature in full - and asks the browser to
+     print it. The browser paginates and can "Save as PDF", which beats filling a
+     fixed-size form: nothing is clipped and the text stays selectable. */
+  var PRINT_CSS=
+    "@page{size:A4;margin:11mm}"+
+    "*{box-sizing:border-box}"+
+    "body{font:10pt/1.35 'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#111;margin:0}"+
+    "h1{font-size:20pt;margin:0 0 2px}"+
+    ".sub{color:#555;font-size:10pt;margin-bottom:10px}"+
+    "h2{font-size:10pt;text-transform:uppercase;letter-spacing:.06em;color:#a50d24;"+
+      "border-bottom:1px solid #d8d0c2;margin:14px 0 7px;padding-bottom:3px;"+
+      "page-break-after:avoid;break-after:avoid}"+
+    ".phead{display:flex;gap:14px;align-items:center;margin-bottom:2px}"+
+    ".phead>div{min-width:0}"+
+    ".phead img{width:86px;height:86px;flex:0 0 86px;object-fit:cover;border-radius:8px;"+
+      "border:1px solid #d8d0c2}"+
+    ".tiles{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}"+
+    ".tile{border:1px solid #d8d0c2;border-radius:6px;padding:5px 9px;min-width:62px;text-align:center}"+
+    ".tile b{display:block;font-size:7.5pt;text-transform:uppercase;letter-spacing:.05em;color:#666;font-weight:700}"+
+    ".tile span{font-size:13pt;font-weight:700}"+
+    ".cols{display:flex;gap:14px;align-items:flex-start}"+
+    ".cols>div{flex:1;min-width:0}"+
+    "table{border-collapse:collapse;width:100%;font-size:9pt}"+
+    "th,td{border:1px solid #ddd;padding:2px 5px;text-align:left}"+
+    "th{background:#f2efe9;font-size:7.5pt;text-transform:uppercase;letter-spacing:.04em;color:#555}"+
+    "td.n{text-align:center;width:44px}"+
+    ".kv{font-size:9pt;margin:0 0 6px}"+
+    ".kv b{display:block;font-size:7.5pt;text-transform:uppercase;letter-spacing:.05em;color:#666}"+
+    ".blk{margin:0 0 9px;page-break-inside:avoid;break-inside:avoid}"+
+    ".blk h3{font-size:10pt;margin:0 0 2px}"+
+    ".blk .org{font-size:8pt;color:#777;font-style:italic;margin-bottom:2px}"+
+    ".blk p{margin:0 0 4px}.blk ul{margin:0 0 4px;padding-left:16px}"+
+    ".meta{font-size:8.5pt;color:#444;margin:0 0 3px}"+
+    ".sub-h{font-weight:700}.tag-dmg{font-weight:700}.tag-roll{font-weight:700}"+
+    ".tag-link{color:inherit}.tag-note{color:#666;font-style:italic}"+
+    ".lvl{font-size:9pt;font-weight:700;margin:9px 0 4px;color:#333;"+
+      "page-break-after:avoid;break-after:avoid}"+
+    ".none{color:#777;font-style:italic}";
+
+  function printSheet(){
+    if(!state.className){alert("Build a character first.");return;}
+    var w=window.open("","_blank");
+    if(!w){alert("The print view was blocked. Allow pop-ups for this page and try again.");return;}
+    w.document.open();w.document.write(printSheetHtml(true));w.document.close();
+  }
+  // the whole printable document as a string, so it can be checked without a browser
+  function printSheetHtml(autoPrint){
+    var T=exportTags(),prof=profBonus();
+    function esc2(s){return esc(String(s==null?"":s));}
+    function lines(txt){                      // plain multi-line value -> HTML
+      var v=String(txt==null?"":txt);
+      if(!v||v==="-")return '<span class="none">None</span>';
+      return esc2(v).replace(/\n/g,"<br>");
+    }
+    var h="";
+    var bits=[state.className+(state.subclassName?" ("+state.subclassName+")":"")+" "+state.level,
+              T.species,T.background,T.alignment].filter(function(x){return x;});
+    // the portrait, when the character has one, sits beside the name
+    var head="<h1>"+esc2(state.name||"Unnamed")+"</h1>"+
+             '<div class="sub">'+esc2(bits.join("  ·  "))+"</div>";
+    h+=state.portrait
+      ? '<div class="phead"><img src="'+state.portrait+'" alt=""><div>'+head+"</div></div>"
+      : head;
+    // headline numbers
+    var tiles=[["AC",T.AC],["Hit Points",T.MHP],["Speed",T.WS],["Initiative",T.INI],
+               ["Prof. Bonus",T.PF],["Hit Dice",T.HIT_DIE]];
+    if(T.ability_dc)tiles.push([T.ability_dc+" Save DC",T.a_dc]);
+    h+='<div class="tiles">'+tiles.map(function(t){
+      return '<div class="tile"><b>'+esc2(t[0])+"</b><span>"+esc2(t[1])+"</span></div>";
+    }).join("")+"</div>";
+    // abilities + saves, and skills, side by side
+    var AB=["Strength","Dexterity","Constitution","Intelligence","Wisdom","Charisma"],
+        KEYS=["str","dex","con","int","wis","cha"],UP="ABCDEF",LO="abcdef";
+    var abRows="";
+    for(var i=0;i<6;i++){
+      abRows+="<tr><td>"+AB[i]+'</td><td class="n">'+esc2(T[LO.charAt(i)])+'</td><td class="n">'+esc2(T[UP.charAt(i)])+
+              '</td><td class="n">'+esc2(T["stv_"+KEYS[i]])+(T["st_"+KEYS[i]]==="1"?" ●":"")+"</td></tr>";
+    }
+    var SK=[["a","Acrobatics"],["b","Animal Handling"],["c","Arcana"],["d","Athletics"],["e","Deception"],
+            ["f","History"],["g","Insight"],["h","Intimidation"],["i","Investigation"],["j","Medicine"],
+            ["k","Nature"],["l","Perception"],["m","Performance"],["n","Persuasion"],["o","Religion"],
+            ["p","Sleight of Hand"],["q","Stealth"],["r","Survival"]];
+    var skRows=SK.map(function(s){
+      return "<tr><td>"+s[1]+'</td><td class="n">'+esc2(T["chkv_"+s[0]])+(T["chk_"+s[0]]==="1"?" ●":"")+"</td></tr>";
+    }).join("");
+    h+='<div class="cols"><div>';
+    h+="<h2>Abilities &amp; Saves</h2><table><tr><th>Ability</th><th>Score</th><th>Mod</th><th>Save</th></tr>"+abRows+"</table>";
+    h+='<h2>Senses</h2><p class="kv">'+lines(T.senses)+"</p>";
+    h+='<h2>Defences</h2><p class="kv">'+lines(T.defences)+"</p>";
+    h+="</div><div>";
+    h+="<h2>Skills</h2><table><tr><th>Skill</th><th>Bonus</th></tr>"+skRows+"</table>";
+    h+="</div><div>";
+    h+='<h2>Proficiencies &amp; Languages</h2><p class="kv">'+lines(T.prof_and_languages)+"</p>";
+    h+='<h2>Equipment</h2><p class="kv">'+lines(T.items)+"</p>";
+    h+='<p class="kv"><b>Currency</b>'+esc2(T.gp)+" gp, "+esc2(T.sp)+" sp</p>";
+    h+="</div></div>";
+    // actions: the same attack rows the sheet shows, then the feature-driven lists
+    h+="<h2>Actions</h2>";
+    var rows=attackRows();
+    if(rows.length){
+      h+="<p class=\"meta\">Attacks per Action: <b>"+attacksPerAction()+"</b></p>";
+      h+="<table><tr><th>Attack</th><th>Range</th><th>Hit / DC</th><th>Damage</th><th>Notes</th></tr>"+
+        rows.map(function(r){
+          return "<tr><td>"+esc2(r.name)+(r.sub?' <span class="tag-note">'+esc2(r.sub)+"</span>":"")+
+            "</td><td>"+esc2(r.range||"—")+"</td><td>"+esc2(r.hit)+"</td><td>"+esc2(r.dmg)+
+            "</td><td>"+esc2(r.notes||"")+"</td></tr>";
+        }).join("")+"</table>";
+    }
+    var ae=actionEconomy();
+    function aeList(title,list){
+      if(!list.length)return "";
+      return '<p class="kv"><b>'+title+"</b>"+list.map(function(x){return esc2(x.name);}).join(", ")+"</p>";
+    }
+    h+='<div style="margin-top:6px">'+aeList("Other actions",ae.action)+aeList("Bonus actions",ae.bonus)+
+       aeList("Reactions",ae.reaction)+aeList("On a hit",ae.attack)+"</div>";
+    if(T.reactions&&T.reactions!=="-")h+='<p class="kv"><b>Reactions (incl. spells)</b>'+lines(T.reactions)+"</p>";
+    // spells, in full, grouped by level
+    var info=spellInfo();
+    if(info){
+      h+="<h2>Spells</h2>";
+      h+='<p class="meta">'+esc2(state.className)+" · "+esc2(info.ability)+" · save DC "+
+         (8+prof+abMod(totalScore(info.ability)))+" · attack "+modStr(prof+abMod(totalScore(info.ability)))+"</p>";
+      var byL={},any=false;
+      [].concat(state.spells.cantrips||[],state.spells.spells||[]).forEach(function(k){
+        var s=spellByKey(k);if(!s)return;
+        (byL[s.level]=byL[s.level]||[]).push(s);any=true;
+      });
+      if(!any)h+='<p class="none">No spells chosen.</p>';
+      for(var L=0;L<=9;L++){
+        if(!byL[L])continue;
+        var slot=L>0?T["nbr_of_available_level_"+L+"_slots"]:"";
+        h+='<div class="lvl">'+(L===0?"Cantrips":ordinal(L)+"-level spells")+(slot?"  —  "+esc2(slot)+" slots":"")+"</div>";
+        byL[L].forEach(function(s){
+          var flags=[];
+          if(s.conc)flags.push("Concentration");
+          if(s.ritual)flags.push("Ritual");
+          h+='<div class="blk"><h3>'+esc2(s.name)+"</h3>";
+          h+='<div class="meta">'+esc2((s.school||"")+(flags.length?" · "+flags.join(", "):""))+"</div>";
+          h+='<div class="meta">'+renderTags("{@b Casting Time:} "+(s.time||"—")+"  ·  {@b Range:} "+(s.range||"—")+
+             "  ·  {@b Components:} "+(s.compFull||"—")+"  ·  {@b Duration:} "+(s.duration||"—"))+"</div>";
+          h+=(s.entries||[]).map(renderEntry).join("");
+          if(s.higher&&s.higher.length)h+=renderEntry({type:"entries",name:"At Higher Levels",entries:s.higher});
+          h+="</div>";
+        });
+      }
+    }
+    // every feature and trait, in full
+    h+="<h2>Features &amp; Traits</h2>";
+    featureCards().forEach(function(c){
+      h+='<div class="blk"><h3>'+esc2(c.name)+"</h3>"+
+         (c.origin?'<div class="org">'+esc2(c.origin)+"</div>":"")+
+         (c.entries||[]).map(renderEntry).join("")+"</div>";
+    });
+    return "<!doctype html><html><head><meta charset=\"utf-8\"><title>"+
+      esc2(state.name||"Character")+" — Character Sheet</title><style>"+PRINT_CSS+"</style></head><body>"+
+      h+(autoPrint?"<script>window.onload=function(){setTimeout(function(){window.print();},250);};<\/script>":"")+
+      "</body></html>";
+  }
+
   function exportPdf(){
     if(!window.PDFLib){alert("pdf-lib is missing.\n\nDownload pdf-lib.min.js into resources/ (see README).");return;}
-    if(!window.CC_PDF_TEMPLATE){alert("No PDF sheet template found.\n\nSupply a form-fillable 5e sheet and run:\n  python tools/gen_pdf_template.py \"your-sheet.pdf\"");return;}
+    // the sheet built from character_creator_template.pptx, falling back to the WotC form
+    var ownSheet=!!(window.CC_SHEET_TEMPLATE&&window.CC_SHEET_FIELDS);
+    if(!ownSheet&&!window.CC_PDF_TEMPLATE){alert("No PDF sheet template found.\n\nRun:\n  python tools/cc_make_pdf_template.py");return;}
     if(!state.className){alert("Build a character first.");return;}
     var btn=$("pdfBtn");btn.classList.add("busy");btn.disabled=true;
     function done(){btn.classList.remove("busy");btn.disabled=false;}
-    PDFLib.PDFDocument.load(base64ToBytes(window.CC_PDF_TEMPLATE)).then(function(doc){
-      fillPdfForm(doc.getForm());
+    PDFLib.PDFDocument.load(base64ToBytes(ownSheet?window.CC_SHEET_TEMPLATE:window.CC_PDF_TEMPLATE)).then(function(doc){
+      if(ownSheet)fillSheetForm(doc.getForm());else fillPdfForm(doc.getForm());
       try{doc.getForm().updateFieldAppearances();}catch(e){}
       if(state.portrait){
         return doc.embedPng(state.portrait).then(function(png){
@@ -3512,8 +4398,9 @@
   $("toBackground2").addEventListener("click",function(){setStep("background");});
 
   $("raceSelect").addEventListener("change",function(e){
-    var v=e.target.value;state.raceChoices={};state.raceLineage=null;
-    if(!v){state.race=null;}else{var p=v.split("|");state.race={name:p[0],source:p[1]};}
+    var v=e.target.value;state.raceChoices={};
+    if(!v){state.race=null;state.raceLineage=null;}
+    else{var p=v.split("|");state.race={name:p[0],source:p[1]};state.raceLineage=p[2]||null;}
     render();
   });
   $("toAbilities").addEventListener("click",function(){setStep("abilities");});
@@ -3525,7 +4412,7 @@
   $("toSheet").addEventListener("click",function(){setStep("sheet");});
   $("toSpells2").addEventListener("click",function(){setStep("spells");});
   $("btnLoadStart").addEventListener("click",function(){loadViaPicker("fileLoadStart");});
-  $("pdfBtn").addEventListener("click",function(){exportPdf();});
+  $("pdfBtn").addEventListener("click",function(){printSheet();});
   $("fileLoadStart").addEventListener("change",function(e){if(e.target.files&&e.target.files[0]){charFileHandle=null;loadCharFile(e.target.files[0]);}e.target.value="";});
   $("abilityMethod").addEventListener("change",function(e){
     state.abilities.method=e.target.value;

@@ -72,6 +72,22 @@ body.dark .src-hb{color:#d5ab5e}
 .rc-x:hover{background:var(--accent);color:#fff}
 .recent-note{margin-top:8px;font-size:11px;color:var(--muted)}
 .edition-load span{color:var(--muted);font-size:14px}
+/* ---------- rules-reference tiles on the opening screen ----------
+   The opening screen is a narrow form column, but these four are a browsing area, so
+   they reach past it on a wide window. The pull-out is in pixels rather than vw so a
+   scrollbar can never push the page sideways, and it folds away below 1160px. */
+.reference-wrap{margin-top:36px;margin-left:-150px;margin-right:-150px}
+@media(max-width:1160px){.reference-wrap{margin-left:0;margin-right:0}}
+.reference-h{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:14px;text-align:center}
+.reference-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
+@media(max-width:900px){.reference-cards{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:560px){.reference-cards{grid-template-columns:1fr}}
+.ref-card{display:block;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:26px 20px;text-align:center;text-decoration:none;color:inherit;box-shadow:var(--shadow);transition:border-color .15s,transform .05s}
+.ref-card:hover{border-color:var(--accent)}
+.ref-card:active{transform:translateY(1px)}
+.ref-card img{width:100%;max-width:150px;height:auto;aspect-ratio:1/1;border-radius:14px;display:block;margin:0 auto 14px}
+.ref-card .rf-nm{font-size:19px;font-weight:700;margin-bottom:5px}
+.ref-card .rf-ds{font-size:13.5px;color:var(--muted);line-height:1.4}
 
 /* builder */
 .topbar{display:flex;align-items:center;gap:12px;margin-bottom:18px}

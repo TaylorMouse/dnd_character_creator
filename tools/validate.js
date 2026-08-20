@@ -36,7 +36,7 @@ var fso=new ActiveXObject("Scripting.FileSystemObject");
 var ROOT=fso.GetParentFolderName(fso.GetParentFolderName(WScript.ScriptFullName))+"\\";
 
 // ---------- load data + app ----------
-var dataFiles=["data-classes.js","data-feats.js","data-backgrounds.js","data-races.js",
+var dataFiles=["data-classes.js","data-feats.js","data-optfeatures.js","data-backgrounds.js","data-races.js",
                "data-items.js","data-sources.js","data-proficiencies.js","data-starting.js","data-spells.js","data-spellcasting.js","data-resources.js","data-speed.js","data-condmods.js","data-languages.js"];
 for(var i=0;i<dataFiles.length;i++) eval(readFile(ROOT+"resources\\"+dataFiles[i]));
 // every generated per-class feature file
@@ -59,7 +59,7 @@ app=app.replace("populateLevels();showEdition();",
  "martialArtsDie:martialArtsDie,isMonkWeapon:isMonkWeapon,biggerDie:biggerDie,actionsCardHtml:actionsCardHtml,classOptions:classOptions,"+
  "profBlock:profBlock,profOpts:profOpts,customProfs:customProfs,"+
  "orphanProgressions:orphanProgressions,optProgMap:optProgMap,validChoiceKeys:validChoiceKeys,"+
- "fightingStyles:fightingStyles,hasStyle:hasStyle,renderRace:renderRace,"+
+ "fightingStyles:fightingStyles,hasStyle:hasStyle,renderRace:renderRace,populateRaces:populateRaces,"+
  "allRacialSpells:allRacialSpells,pickedRacialSpells:pickedRacialSpells,spellPicksAll:spellPicksAll,currentRace:currentRace,currentLineage:currentLineage,originShort:originShort,"+
  "defencesHtml:defencesHtml,defLabel:defLabel,defencesSummaryLines:defencesSummaryLines,"+
  "speciesLabel:speciesLabel,cleanLineageName:cleanLineageName,dcAbility:dcAbility,abilitySaveDc:abilitySaveDc,"+
@@ -67,6 +67,11 @@ app=app.replace("populateLevels();showEdition();",
  "rcCardHtml:rcCardHtml,rcWhen:rcWhen,defences:defences,expertiseSkills:expertiseSkills,skillBonus:skillBonus,passiveScore:passiveScore,"+
  "renderTags:renderTags,tagExplain:tagExplain,featureDcAbility:featureDcAbility,"+
  "featureGrants:featureGrants,languagesAll:languagesAll,withFeatureProfs:withFeatureProfs,proficientSkills:proficientSkills,"+
+ "featureDamageDefences:featureDamageDefences,featureDarkvision:featureDarkvision,sensesList:sensesList,entryText:entryText,plainTags:plainTags,featuresAndTraits:featuresAndTraits,"+
+ "featureLangChoice:featureLangChoice,featureToolChoice:featureToolChoice,featureLangPicks:featureLangPicks,featureToolPicks:featureToolPicks,featureProfChoiceHtml:featureProfChoiceHtml,validChoiceKeys:validChoiceKeys,"+
+ "featureNamesList:featureNamesList,speedText:speedText,spellByName:spellByName,currentBg:currentBg,"+
+ "attackRows:attackRows,attacksPerAction:attacksPerAction,spellByKey:spellByKey,ordinal:ordinal,"+
+ "entryPlain:entryPlain,featureCards:featureCards,exportTags:exportTags,printSheetHtml:printSheetHtml,raceFeatGrant:raceFeatGrant,raceFeatOptions:raceFeatOptions,raceFeatPicks:raceFeatPicks,raceFeatPending:raceFeatPending,raceFeatHtml:raceFeatHtml,allChosenFeats:allChosenFeats,featPickSlots:featPickSlots,featPicks:featPicks,featPicksPending:featPicksPending,featPicksHtml:featPicksHtml,featGrantsAll:featGrantsAll,featResourceBonus:featResourceBonus,optFeatureList:optFeatureList,"+
  "itemMechanics:itemMechanics,skillAdvantage:skillAdvantage};");
 eval(app);
 var C=window.__cc,S=C.state;
@@ -296,6 +301,115 @@ check("  Monk with a shield loses it",C.speedInfo().total,30);
 setup("barbarian-classic","Barbarian",1);
 S.race={name:"Elf",source:"PHB"};S.raceLineage="Wood";
 check("  Wood Elf lineage speed 35",C.speedInfo().total,35);
+
+// =====================================================================
+section("6f. What a feat grants is offered and applied");
+setup("sorcerer-classic","Sorcerer",4);
+S.subclassName="Wild Magic";
+S.race={name:"Human",source:"PHB"};S.raceLineage="Variant";
+S.raceChoices["race:feat:0"]="Metamagic Adept";
+var _recs=C.allChosenFeats();
+check("  Metamagic Adept is seen as taken",_recs.length,1);
+var _ma=_recs[0];
+check("  it asks for two picks",C.featPickSlots(_ma.ft,_ma.base).length,2);
+checkTrue("  from the real Metamagic list",C.optFeatureList(["MM"],"classic").length>=8);
+checkTrue("  and the step is pending until answered",C.featPicksPending(_ma.ft,_ma.base,S.raceChoices));
+checkTrue("  the picker is rendered",C.featPicksHtml(_ma.ft,_ma.base,S.raceChoices,"x").indexOf("Quickened Spell")>=0);
+S.raceChoices["race:feat0:opt:0:0"]="Quickened Spell";
+S.raceChoices["race:feat0:opt:0:1"]="Twinned Spell";
+check("  once both are chosen it is resolved",C.featPicksPending(_ma.ft,_ma.base,S.raceChoices),false);
+check("  ...and the species step too",C.raceFeatPending(),false);
+check("  both options are collected",C.featGrantsAll().options.length,2);
+check("  the feat adds 2 sorcery points",C.featResourceBonus()["Sorcery Points"],2);
+checkTrue("  the options are listed with the features",(function(){
+  var c=C.featureCards(),n=0;
+  for(var i=0;i<c.length;i++)if(/Quickened Spell|Twinned Spell/.test(c[i].name))n++;
+  return n===2;})());
+checkTrue("  ...and reach the printable sheet",C.exportTags().features_and_traits.indexOf("Quickened Spell")>=0);
+// a feat that grants proficiencies outright
+setup("rogue-classic","Rogue",4);
+S.race={name:"Human",source:"PHB"};S.raceLineage="Variant";
+S.raceChoices["race:feat:0"]="Moderately Armored";
+checkTrue("  Moderately Armored grants medium armour and shields",
+  C.featGrantsAll().armor.join(",").indexOf("Medium")>=0);
+// a feat whose choice is a filter, not a list
+S.raceChoices["race:feat:0"]="Weapon Master";
+var _wm=C.allChosenFeats()[0],_ws=C.featPickSlots(_wm.ft,_wm.base);
+check("  Weapon Master asks for four weapons",_ws.length,4);
+checkTrue("  ...resolved from the weapon list",_ws[0].pool.length>20);
+// Skill Expert: a skill plus expertise in one you already have
+setup("rogue-classic","Rogue",4);
+S.choices["skill:0"]="Stealth";S.choices["skill:1"]="Perception";
+S.race={name:"Human",source:"PHB"};S.raceLineage="Variant";
+S.raceChoices["race:feat:0"]="Skill Expert";
+var _se=C.allChosenFeats()[0],_ss=C.featPickSlots(_se.ft,_se.base);
+check("  Skill Expert asks for a skill and an expertise",_ss.length,2);
+checkTrue("  expertise is limited to skills you are proficient in",
+  _ss[1].pool.length>0&&_ss[1].pool.indexOf("Stealth")>=0);
+S.raceChoices["race:feat0:exp:0"]="Stealth";
+checkTrue("  and doubles that skill's bonus",C.expertiseSkills()["Stealth"]===1);
+// every pick a feat can ask for must have something in it
+checkTrue("  no feat offers an empty pool",(function(){
+  setup("rogue-classic","Rogue",8);
+  S.choices["skill:0"]="Stealth";S.choices["skill:1"]="Perception";
+  S.choices["skill:2"]="Investigation";S.choices["skill:3"]="Acrobatics";
+  var L=window.CC_FEATS;
+  for(var i=0;i<L.length;i++){
+    var sl=C.featPickSlots(L[i],"t:");
+    for(var s=0;s<sl.length;s++)if(!sl[s].pool.length)return false;
+  }
+  return true;})());
+
+// =====================================================================
+section("6e. A feat granted by the species can be chosen");
+setup("sorcerer-classic","Sorcerer",4);
+S.subclassName="Wild Magic";
+S.race={name:"Human",source:"PHB"};S.raceLineage="Variant";
+var vhg=C.raceFeatGrant();
+checkTrue("  Variant Human grants a feat",!!vhg);
+check("  ...exactly one",vhg?vhg.count:0,1);
+check("  ...of any category",vhg?vhg.category:"?","");
+checkTrue("  feats are offered to pick from",C.raceFeatOptions().length>50);
+checkTrue("  the species step is pending until one is chosen",C.raceFeatPending());
+checkTrue("  a picker is rendered",C.raceFeatHtml().indexOf("race-feat")>=0);
+S.raceChoices["race:feat:0"]="Resilient";
+checkTrue("  a half-feat asks which ability it raises",C.raceFeatHtml().indexOf("race-featab")>=0);
+checkTrue("  ...and stays pending until that is answered",C.raceFeatPending());
+S.raceChoices["race:featab:0:0"]="Constitution";
+check("  once answered it is resolved",C.raceFeatPending(),false);
+check("  Resilient raises Constitution 13 -> 14",C.totalScore("Constitution"),14);
+checkTrue("  the feat is listed with the other features",(function(){
+  var c=C.featureCards();
+  for(var i=0;i<c.length;i++)if(c[i].name==="Feat: Resilient")return true;
+  return false;})());
+checkTrue("  and reaches the printable sheet",C.exportTags().features_and_traits.indexOf("Feat: Resilient")>=0);
+// the 2024 Human's Versatile trait grants an Origin feat specifically
+setup("sorcerer-one","Sorcerer",4);
+S.race={name:"Human",source:"XPHB"};S.raceLineage=null;
+var xg=C.raceFeatGrant();
+check("  2024 Human grants an Origin feat",xg?xg.category:"none","Origin");
+checkTrue("  ...and only Origin feats are offered",(function(){
+  var o=C.raceFeatOptions();
+  if(!o.length)return false;
+  for(var i=0;i<o.length;i++)if(o[i].category!=="Origin")return false;
+  return true;})());
+// a species without the grant offers nothing
+setup("sorcerer-classic","Sorcerer",4);
+S.race={name:"Elf",source:"PHB"};S.raceLineage="High";
+check("  a species with no feat grant shows no picker",C.raceFeatHtml(),"");
+
+// =====================================================================
+section("6d. Species dropdown lists each subrace as its own flattened option");
+setup("wizard-classic","Wizard",1);S.edition="classic";S.race=null;S.raceLineage=null;
+C.populateRaces();
+var rsHtml=document.getElementById("raceSelect").innerHTML;
+checkTrue("  a subrace is its own option (value Elf|PHB|Drow)",rsHtml.indexOf('value="Elf|PHB|Drow"')>=0);
+checkTrue("  a species with no subraces stays a plain option (Leonin|MOT)",rsHtml.indexOf('value="Leonin|MOT"')>=0);
+checkTrue("  no bare option for a species that has lineages (Elf|PHB alone)",rsHtml.indexOf('value="Elf|PHB"')<0);
+// choosing a subrace value sets species and lineage together (as the change handler does)
+var _p="Elf|PHB|Wood".split("|");S.race={name:_p[0],source:_p[1]};S.raceLineage=_p[2]||null;
+check("  choosing 'Elf|PHB|Wood' sets lineage Wood",S.raceLineage,"Wood");
+check("  ...and species Elf/PHB",S.race.name+"/"+S.race.source,"Elf/PHB");
 
 
 // =====================================================================
@@ -531,6 +645,67 @@ checkTrue("  no raw 5etools tags leak through",(function(){for(var i=0;i<dfn.adv
 S.race={name:"Aasimar",source:"MPMM"};
 var dfn2=C.defences();
 checkTrue("  Aasimar resists necrotic and radiant",dfn2.resist.length>=2);
+
+// =====================================================================
+section("6b. Damage resistances / immunities / darkvision granted by a feature's text");
+function hasDef(arr,t){for(var i=0;i<arr.length;i++)if(String(arr[i]).toLowerCase().indexOf(t.toLowerCase())>=0)return true;return false;}
+setup("warlock-classic","Warlock",6);S.subclassName="The Celestial";
+checkTrue("  Celestial Radiant Soul -> resist Radiant",hasDef(C.defences().resist,"Radiant"));
+setup("wizard-classic","Wizard",10);S.subclassName="School of Necromancy";
+checkTrue("  Necromancer Inured to Undeath -> resist Necrotic",hasDef(C.defences().resist,"Necrotic"));
+setup("fighter-classic","Fighter",10);S.subclassName="Psi Warrior";
+checkTrue("  Psi Warrior Guarded Mind -> resist Psychic",hasDef(C.defences().resist,"Psychic"));
+setup("cleric-classic","Cleric",17);S.subclassName="Forge Domain";
+var fd17=C.defences();
+checkTrue("  Forge Saint of Forge and Fire -> immune Fire",hasDef(fd17.immune,"Fire"));
+checkTrue("  Forge Saint -> resist B/P/S (from nonmagical attacks)",hasDef(fd17.resist,"nonmagical"));
+// a temporary buff must NOT leak in as a permanent resistance: Exalted Champion lasts 1 hour
+setup("paladin-classic","Paladin",20);S.subclassName="Oath of the Crown";
+checkTrue("  Exalted Champion (1-hour buff) is not taken as permanent",!hasDef(C.defences().resist,"nonmagical"));
+// darkvision granted by a feature reaches the senses list
+setup("ranger-classic","Ranger",3);S.subclassName="Gloom Stalker";
+var udv=C.featureDarkvision();
+checkTrue("  Umbral Sight parsed as base 60 / +30 if you already have it",(function(){for(var i=0;i<udv.length;i++)if(udv[i].base===60&&udv[i].bonus===30)return true;return false;})());
+checkTrue("  no racial darkvision -> Darkvision 60 ft. in senses",/Darkvision 60 ft/.test(C.sensesList().join(" ")));
+setup("sorcerer-classic","Sorcerer",1);S.subclassName="Shadow Magic";
+checkTrue("  Shadow sorcerer Eyes of the Dark -> Darkvision 120 ft.",/Darkvision 120 ft/.test(C.sensesList().join(" ")));
+// Shadow Arts lists 'darkvision' as a castable spell name, not a sense -> no darkvision grant
+setup("monk-classic","Monk",6);S.subclassName="Way of Shadow";
+check("  monk Shadow Arts grants no darkvision sense",C.featureDarkvision().length,0);
+
+// =====================================================================
+section("6c. Languages / tools a feature lets you pick 'of your choice'");
+function featByName(nm){var fts=C.featuresAndTraits();for(var i=0;i<fts.length;i++)if(fts[i].name===nm)return fts[i];return null;}
+// Ranger Favored Enemy -> one language of your choice, and it reaches the languages list
+setup("ranger-classic","Ranger",1);
+var fe=featByName("Favored Enemy");
+checkTrue("  Favored Enemy is detected as a language choice",!!C.featureLangChoice(fe));
+check("  ...for one language",C.featureLangChoice(fe).count,1);
+S.choices["featlang:Favored Enemy:0"]="Elvish";
+checkTrue("  the chosen language shows in the languages list",C.languagesAll().indexOf("Elvish")>=0);
+checkTrue("  its picker key survives a level change (validChoiceKeys)",!!C.validChoiceKeys()["featlang:Favored Enemy:0"]);
+// Knowledge cleric Blessings of Knowledge -> two languages
+setup("cleric-classic","Cleric",1);S.subclassName="Knowledge Domain";
+var bok=featByName("Blessings of Knowledge");
+check("  Blessings of Knowledge grants two languages",bok&&C.featureLangChoice(bok)?C.featureLangChoice(bok).count:0,2);
+// Cavalier's "Alternatively, you learn one language" is an either/or with a skill -> no lang picker
+setup("fighter-classic","Fighter",3);S.subclassName="Cavalier";
+check("  Cavalier either/or language is not double-granted",C.featureLangChoice(featByName("Bonus Proficiency")),null);
+// Battle Master Student of War -> one artisan's tool of your choice, reaches the tool list
+setup("fighter-classic","Fighter",3);S.subclassName="Battle Master";
+var sow=featByName("Student of War");
+checkTrue("  Student of War is detected as a tool choice",!!C.featureToolChoice(sow));
+checkTrue("  ...with an artisan's-tools pool",C.featureToolChoice(sow).pool.length>=10);
+S.choices["feattool:Student of War:0"]="Smith's Tools";
+checkTrue("  the chosen tool is collected",C.featureToolPicks().indexOf("Smith's Tools")>=0);
+checkTrue("  its picker key survives a level change",!!C.validChoiceKeys()["feattool:Student of War:0"]);
+// Mastermind Master of Intrigue -> a gaming set of your choice (small pool)
+setup("rogue-classic","Rogue",3);S.subclassName="Mastermind";
+var moi=C.featureToolChoice(featByName("Master of Intrigue"));
+checkTrue("  Master of Intrigue offers a gaming-set choice",!!moi&&moi.pool.length>=3&&moi.pool.length<=8);
+// Artificer's conditional "if you already have this proficiency" swap is not offered as an extra
+setup("artificer-classic","Artificer",3);S.subclassName="Alchemist";
+check("  Artificer conditional tool swap is not an extra pick",C.featureToolChoice(featByName("Tool Proficiency")),null);
 
 
 // =====================================================================

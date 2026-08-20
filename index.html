@@ -9,6 +9,7 @@
 <link rel="apple-touch-icon" sizes="180x180" href="resources/apple-touch-icon.png">
 <script src="resources/data-classes.js"></script>
 <script src="resources/data-feats.js"></script>
+<script src="resources/data-optfeatures.js"></script>
 <script src="resources/data-backgrounds.js"></script>
 <script src="resources/data-races.js"></script>
 <script src="resources/data-items.js"></script>
@@ -56,6 +57,41 @@
       <button class="btn ghost" id="btnLoadStart">&#128193; Load a saved character</button>
       <input type="file" id="fileLoadStart" accept="application/json,.json" style="display:none">
     </div>
+    <div class="reference-wrap">
+      <div class="reference-h">Browse the rules</div>
+      <div class="reference-cards">
+        <a class="ref-card" href="classes.html">
+          <img src="resources/dnd-classes.png" alt="" width="150" height="150">
+          <div class="rf-nm">Classes</div>
+          <div class="rf-ds">Every class and subclass, with all their features.</div>
+        </a>
+        <a class="ref-card" href="races.html">
+          <img src="resources/dnd-species.png" alt="" width="150" height="150">
+          <div class="rf-nm">Species</div>
+          <div class="rf-ds">Every species and lineage, with traits and ancestries.</div>
+        </a>
+        <a class="ref-card" href="spells.html">
+          <img src="resources/dnd-spells.png" alt="" width="150" height="150">
+          <div class="rf-nm">Spells</div>
+          <div class="rf-ds">Every spell, filterable by class, level, school and book.</div>
+        </a>
+        <a class="ref-card" href="creatures.html">
+          <img src="resources/dnd-creatures.png" alt="" width="150" height="150">
+          <div class="rf-nm">Creatures</div>
+          <div class="rf-ds">Every monster and NPC, with full stat blocks.</div>
+        </a>
+        <a class="ref-card" href="feats.html">
+          <img src="resources/dnd-feats.png" alt="" width="150" height="150">
+          <div class="rf-nm">Feats</div>
+          <div class="rf-ds">Every feat, with its prerequisite and what it grants.</div>
+        </a>
+        <a class="ref-card" href="items.html">
+          <img src="resources/dnd-items.png" alt="" width="150" height="150">
+          <div class="rf-nm">Items</div>
+          <div class="rf-ds">Every item, from gear to legendary magic items.</div>
+        </a>
+      </div>
+    </div>
   </section>
 
   <!-- SCREEN 2: BUILDER (paged) -->
@@ -65,7 +101,7 @@
       <span class="edition-tag" id="editionTag">2014 Core Rules</span>
       <span class="top-actions">
         <button class="icon-btn hidden" id="saveBtn" title="Save character"></button>
-        <button class="icon-btn hidden" id="pdfBtn" title="Export to PDF"></button>
+        <button class="icon-btn hidden" id="pdfBtn" title="Print / Save as PDF"></button>
         <button class="icon-btn hidden" id="darkToggle" title="Toggle dark mode"></button>
       </span>
     </div>

@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Species Reference &middot; D&D</title>
+<link rel="icon" href="resources/favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="icon" type="image/png" sizes="32x32" href="resources/favicon-32.png">
+<script src="resources/data-races.js"></script>
+<script src="resources/data-sources.js"></script>
+<link rel="stylesheet" href="css/styles.css">
+<style>
+/* ---- species reference page (shares the spell page's look) ---- */
+.sp-wrap{max-width:none;margin:0;padding:18px 26px 60px}
+.sp-top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+.sp-top h1{font-size:24px;margin:0;color:var(--accent)}
+.sp-top .sp-sub{color:var(--muted);font-size:13px}
+.sp-top .sp-spacer{flex:1}
+.sp-top a.sp-back{color:var(--accent2);font-weight:700;font-size:14px;text-decoration:none}
+.sp-top a.sp-back:hover{text-decoration:underline}
+
+.sp-filters{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;box-shadow:var(--shadow);margin-bottom:12px}
+.sp-filter-row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
+.sp-field{display:flex;flex-direction:column;gap:4px}
+.sp-field label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.sp-field input[type=text],.sp-field select{font:inherit;font-size:14px;padding:7px 9px;border:1px solid var(--line2);border-radius:7px;background:var(--bg);color:var(--ink);min-width:150px}
+.sp-field input:focus,.sp-field select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--focus)}
+.sp-search{min-width:230px!important;flex:1}
+
+.sp-seg{display:inline-flex;border:1px solid var(--line2);border-radius:7px;overflow:hidden}
+.sp-seg button{font:inherit;font-size:13px;font-weight:600;padding:7px 12px;border:0;background:var(--bg);color:var(--ink);cursor:pointer}
+.sp-seg button+button{border-left:1px solid var(--line2)}
+.sp-seg button.on{background:var(--accent);color:#fff}
+.sp-toggles{display:flex;gap:14px;align-items:center}
+.sp-toggles label{display:flex;gap:6px;align-items:center;font-size:13px;font-weight:600;color:var(--ink);cursor:pointer}
+.sp-clear{font:inherit;font-size:13px;font-weight:600;color:var(--accent2);background:none;border:0;cursor:pointer;padding:6px 2px}
+.sp-clear:hover{text-decoration:underline}
+
+.sp-main{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(360px,0.9fr);gap:16px;align-items:start}
+.sp-listwrap{background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);overflow:hidden}
+.sp-count{padding:9px 14px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--line)}
+.sp-scroll{max-height:calc(100vh - 250px);overflow:auto}
+table.sp-table{width:100%;border-collapse:collapse;font-size:13.5px}
+table.sp-table th{position:sticky;top:0;background:var(--head);text-align:left;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);cursor:pointer;white-space:nowrap;z-index:1}
+table.sp-table th:hover{color:var(--accent)}
+table.sp-table th .ar{font-size:9px;margin-left:3px}
+table.sp-table td{padding:7px 10px;border-top:1px solid var(--line);vertical-align:top}
+table.sp-table tbody tr{cursor:pointer}
+table.sp-table tbody tr:hover{background:rgba(200,16,46,.06)}
+table.sp-table tbody tr.sel{background:rgba(200,16,46,.12)}
+.sp-nm{font-weight:700;color:var(--ink)}
+.sp-badge{display:inline-block;font-size:10px;font-weight:800;padding:1px 5px;border-radius:4px;margin-left:5px;vertical-align:middle}
+.sp-badge.hb{background:#b8860b;color:#fff}
+.sp-badge.lin{background:#4a6b8a;color:#fff}
+.sp-src{color:var(--muted);font-size:12px}
+tr.rc-sub td:first-child{padding-left:6px}
+.rc-indent{color:var(--muted);font-size:11px;margin-right:2px}
+
+.sp-detail{position:sticky;top:14px;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:20px 22px;max-height:calc(100vh - 40px);overflow:auto}
+.sp-detail .sp-close{display:none}
+.sp-detail h2{margin:0 0 3px;font-size:22px;color:var(--accent)}
+.sp-detail .sp-sub2{color:var(--muted);font-style:italic;font-size:14px;margin-bottom:14px}
+.sp-meta{display:grid;grid-template-columns:1fr 1fr;gap:8px 18px;margin:0 0 14px;padding:12px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.sp-meta .m{font-size:13.5px}
+.sp-meta .m.wide{grid-column:1 / -1}
+.sp-meta .m b{display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:1px}
+.sp-detail .sp-body p{margin:0 0 10px}
+.sp-detail .sp-body ul{margin:0 0 10px;padding-left:20px}
+.sp-sec-h{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--accent2);margin:16px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--line)}
+table.rc-anc{border-collapse:collapse;margin:4px 0 8px;font-size:13px;width:100%}
+table.rc-anc th,table.rc-anc td{border:1px solid var(--line2);padding:4px 8px;text-align:left}
+.rc-lin{border:1px solid var(--line2);border-left:4px solid var(--accent);border-radius:6px;padding:10px 12px;margin:0 0 10px;background:var(--bg)}
+.rc-lin h4{margin:0 0 3px;font-size:15px;color:var(--ink)}
+.rc-lin .rc-lin-meta{font-size:12px;color:var(--muted);margin-bottom:6px}
+.rc-lin .sub-h{font-weight:700}
+.sp-empty{color:var(--muted);text-align:center;padding:60px 20px}
+.sub-h{font-weight:700}
+.tag-dmg{color:var(--accent);font-weight:700}
+.tag-roll{font-weight:700}
+.tag-link{color:var(--link)}
+.tag-note{color:var(--muted);font-style:italic}
+
+@media (max-width:900px){
+  .sp-main{grid-template-columns:1fr}
+  .sp-detail{position:fixed;inset:0;z-index:50;border-radius:0;max-height:none;display:none}
+  .sp-detail.open{display:block}
+  .sp-detail .sp-close{display:inline-block;position:absolute;top:12px;right:14px;background:var(--bg);border:1px solid var(--line2);border-radius:7px;width:34px;height:34px;font-size:18px;cursor:pointer;color:var(--ink)}
+  .sp-scroll{max-height:none}
+}
+</style>
+</head>
+<body>
+<div class="sp-wrap">
+  <div class="sp-top">
+    <h1>Species Reference</h1>
+    <span class="sp-sub" id="spTagline"></span>
+    <span class="sp-spacer"></span>
+    <a class="sp-back" href="classes.html">Classes</a>
+    <a class="sp-back" href="creatures.html">Creatures</a>
+    <a class="sp-back" href="spells.html">Spells</a>
+    <a class="sp-back" href="feats.html">Feats</a>
+    <a class="sp-back" href="items.html">Items</a>
+    <a class="sp-back" href="index.html">&larr; Character Creator</a>
+  </div>
+
+  <div class="sp-filters">
+    <div class="sp-filter-row">
+      <div class="sp-field sp-search">
+        <label for="fSearch">Search</label>
+        <input type="text" id="fSearch" placeholder="Species name&hellip;" autocomplete="off">
+      </div>
+      <div class="sp-field">
+        <label>Version</label>
+        <div class="sp-seg" id="fVersion">
+          <button data-v="all" class="on">All</button>
+          <button data-v="2014">2014</button>
+          <button data-v="2024">2024</button>
+        </div>
+      </div>
+      <div class="sp-field">
+        <label for="fSize">Size</label>
+        <select id="fSize"><option value="">Any size</option></select>
+      </div>
+      <div class="sp-field">
+        <label for="fSource">Book</label>
+        <select id="fSource"><option value="">Any book</option></select>
+      </div>
+      <div class="sp-field">
+        <label>Only</label>
+        <div class="sp-toggles">
+          <label><input type="checkbox" id="fDark"> Darkvision</label>
+          <label><input type="checkbox" id="fHB"> Homebrew</label>
+        </div>
+      </div>
+      <button class="sp-clear" id="fClear">Reset filters</button>
+    </div>
+  </div>
+
+  <div class="sp-main">
+    <div class="sp-listwrap">
+      <div class="sp-count" id="spCount"></div>
+      <div class="sp-scroll">
+        <table class="sp-table">
+          <thead><tr id="spHead"></tr></thead>
+          <tbody id="spBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="sp-detail" id="spDetail">
+      <button class="sp-close" id="spClose">&times;</button>
+      <div id="spDetailInner"><div class="sp-empty">Select a species to see its full details.</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var RACES=[].concat((window.CC_RACES&&window.CC_RACES.classic)||[],(window.CC_RACES&&window.CC_RACES.one)||[]);
+  var SOURCES=window.CC_SOURCES||{};
+  var HB_NAMES={GriffonsSaddlebag2:"The Griffon's Saddlebag, Book 2"};
+  function srcName(c){return SOURCES[c]||HB_NAMES[c]||c;}
+  var $=function(id){return document.getElementById(id);};
+  var ABBR={Strength:"Str",Dexterity:"Dex",Constitution:"Con",Intelligence:"Int",Wisdom:"Wis",Charisma:"Cha"};
+
+  // ---------- text helpers (ported from the app's renderer) ----------
+  function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+  function lastSeg(p){for(var i=p.length-1;i>=0;i--)if(p[i]!=="")return p[i];return p[0];}
+  function tagHtml(tag,content){
+    var p=content.split("|"),txt;
+    switch(tag){
+      case"b":case"bold":return"<strong>"+p[0]+"</strong>";
+      case"i":case"italic":case"nsw":return"<em>"+p[0]+"</em>";
+      case"u":return"<u>"+p[0]+"</u>";
+      case"s":case"strike":return"<s>"+p[0]+"</s>";
+      case"note":return'<span class="tag-note">'+p[0]+"</span>";
+      case"h":return"<strong>Hit:</strong> ";
+      case"dc":return'<span class="tag-roll">DC '+p[0]+"</span>";
+      case"damage":return'<span class="tag-dmg">'+((p[1]&&p[1]!=="")?p[1]:p[0])+"</span>";
+      case"scaledamage":return'<span class="tag-dmg">'+lastSeg(p)+"</span>";
+      case"dice":case"d20":case"hit":return'<span class="tag-roll">'+((p[1]&&p[1]!=="")?p[1]:p[0])+"</span>";
+      case"scaledice":return'<span class="tag-roll">'+lastSeg(p)+"</span>";
+      case"chance":return'<span class="tag-roll">'+p[0]+" percent</span>";
+      case"recharge":return"(Recharge "+(p[0]||"6")+")";
+      case"filter":case"book":case"quickref":case"adventure":case"footnote":case"area":
+        return '<span class="tag-link">'+p[0]+"</span>";
+      default:
+        txt=(p.length>=3&&p[2])?p[2]:p[0];return '<span class="tag-link">'+txt+"</span>";
+    }
+  }
+  function renderTags(s){
+    s=esc(s);
+    var re=/\{@(\w+)\s*([^{}]*)\}/,m,guard=0;
+    while((m=re.exec(s))&&guard++<800){
+      s=s.slice(0,m.index)+tagHtml(m[1],(m[2]||"").trim())+s.slice(m.index+m[0].length);
+    }
+    return s;
+  }
+  function renderInline(e){
+    if(e==null)return"";
+    if(typeof e==="string")return renderTags(e);
+    if(e.type==="list")return renderEntry(e);
+    var nm=e.name?'<span class="sub-h">'+esc(e.name)+".</span> ":"";
+    return nm+([].concat(e.entries||e.entry||[]).map(renderInline).join(" "));
+  }
+  function renderEntry(e){
+    if(e==null)return"";
+    if(typeof e==="string")return"<p>"+renderTags(e)+"</p>";
+    var t=e.type;
+    if(t==="entries"||t==="section"||t===undefined){
+      var lead=e.name?'<span class="sub-h">'+esc(e.name)+".</span> ":"";
+      var inner=(e.entries||[]).map(renderEntry).join("");
+      if(e.name&&inner.indexOf("<p>")===0){inner=inner.replace("<p>","<p>"+lead);lead="";}
+      return (lead?"<p>"+lead+"</p>":"")+inner;
+    }
+    if(t==="list")return "<ul>"+(e.items||[]).map(function(it){return "<li>"+renderInline(it)+"</li>";}).join("")+"</ul>";
+    if(t==="item"){
+      var nm=e.name?'<span class="sub-h">'+esc(e.name)+"</span> ":"";
+      return "<p>"+nm+([].concat(e.entries||e.entry||[]).map(renderInline).join(" "))+"</p>";
+    }
+    if(t==="table"){
+      var head=(e.colLabels||[]).map(function(c){return "<th>"+renderTags(c)+"</th>";}).join("");
+      var rows=(e.rows||[]).map(function(r){return "<tr>"+r.map(function(c){return "<td>"+renderInline(c)+"</td>";}).join("")+"</tr>";}).join("");
+      return "<table>"+(head?"<thead><tr>"+head+"</tr></thead>":"")+"<tbody>"+rows+"</tbody></table>";
+    }
+    if(t==="quote")return "<p><em>"+(e.entries||[]).map(renderInline).join(" ")+"</em></p>";
+    return "<p>"+renderInline(e)+"</p>";
+  }
+
+  // ---------- summaries of a species' mechanical bits ----------
+  function abilitySummary(a){
+    if(!a)return "";
+    var parts=[],f=a.fixed||{},k;
+    for(k in f)parts.push((f[k]>=0?"+":"")+f[k]+" "+(ABBR[k]||k));
+    (a.choose||[]).forEach(function(c){
+      var amt=c.amount||1,cnt=c.count||1;
+      parts.push("+"+amt+" to "+cnt+(cnt===1?" ability":" abilities")+" of your choice");
+    });
+    return parts.join(", ");
+  }
+  function langSummary(l){
+    if(!l)return "";var p=(l.fixed||[]).slice();
+    if(l.anyStandard)p.push(l.anyStandard+" standard of your choice");
+    if(l.any)p.push(l.any+" of your choice");
+    return p.join(", ");
+  }
+  function skillSummary(s){
+    if(!s)return "";var p=(s.fixed||[]).slice();
+    if(s.choose&&s.choose.count)p.push(s.choose.count+" of your choice");
+    if(s.any)p.push(s.any+" of your choice");
+    return p.join(", ");
+  }
+  function profSummary(r){
+    var p=[],sk=skillSummary(r.skills);
+    if(sk)p.push("Skills: "+sk);
+    if(r.weapons&&r.weapons.length)p.push("Weapons: "+r.weapons.join(", "));
+    if(r.armor&&r.armor.length)p.push("Armor: "+r.armor.join(", "));
+    if(r.tools&&r.tools.length)p.push("Tools: "+r.tools.join(", "));
+    return p.join(" &middot; ");
+  }
+  function defSummary(r){
+    var p=[];
+    if(r.resist&&r.resist.length)p.push("Resist "+r.resist.join(", "));
+    if(r.immune&&r.immune.length)p.push("Immune "+r.immune.join(", "));
+    if(r.condImmune&&r.condImmune.length)p.push("Immune to "+r.condImmune.join(", "));
+    if(r.vulnerable&&r.vulnerable.length)p.push("Vulnerable "+r.vulnerable.join(", "));
+    return p.join(" &middot; ");
+  }
+  function hasDark(r){for(var i=0;i<(r.senses||[]).length;i++)if(/darkvision/i.test(r.senses[i]))return true;return false;}
+
+  // ---------- flatten: one entry per species AND per lineage/subrace ----------
+  function rid(r){return r.name+"|"+r.source+"|"+r.edition;}
+  function mergeFixed(a,b){var o={},k;a=a||{};b=b||{};for(k in a)o[k]=a[k];for(k in b)o[k]=(o[k]||0)+b[k];return o;}
+  function u(a,b){var o=(a||[]).slice(),i;b=b||[];for(i=0;i<b.length;i++)if(o.indexOf(b[i])<0)o.push(b[i]);return o;}
+  function mergeLangs(a,b){a=a||{};b=b||{};return {fixed:u(a.fixed,b.fixed),anyStandard:(a.anyStandard||0)+(b.anyStandard||0),any:(a.any||0)+(b.any||0)};}
+  function mergeSkills(a,b){a=a||{};b=b||{};return {fixed:u(a.fixed,b.fixed),choose:a.choose||b.choose||null,any:(a.any||0)+(b.any||0)};}
+  // the effective (merged) view of a flat entry: a lineage inherits/overrides its base species
+  function eff(f){
+    var b=f.base,L=f.lin;
+    if(!L)return b;
+    return {name:L.name,parent:b.name,source:L.source||b.source,edition:L.edition||b.edition,hb:L.hb||b.hb,
+      size:L.size||b.size,speed:L.speed||b.speed,
+      senses:(L.senses&&L.senses.length)?L.senses:b.senses,
+      ability:{fixed:mergeFixed((b.ability||{}).fixed,(L.ability||{}).fixed),choose:((b.ability||{}).choose||[]).concat((L.ability||{}).choose||[])},
+      resist:u(b.resist,L.resist),immune:u(b.immune,L.immune),condImmune:u(b.condImmune,L.condImmune),vulnerable:u(b.vulnerable,L.vulnerable),
+      languages:mergeLangs(b.languages,L.languages),skills:mergeSkills(b.skills,L.skills),
+      weapons:u(b.weapons,L.weapons),armor:u(b.armor,L.armor),tools:u(b.tools,L.tools),
+      ancestry:b.ancestry||L.ancestry,baseTraits:b.traits||[],linTraits:L.traits||[]};
+  }
+  var FLAT=[];
+  RACES.forEach(function(r){
+    FLAT.push({key:rid(r)+"|_base",kind:"base",base:r,lin:null});
+    (r.lineages||[]).forEach(function(L){FLAT.push({key:rid(r)+"|"+L.name+"|"+(L.source||r.source),kind:"lin",base:r,lin:L});});
+  });
+
+  // ---------- filter option lists (from the flattened, effective entries) ----------
+  var sizeSet={},sourceSet={};
+  FLAT.forEach(function(f){var e=eff(f);if(e.size)String(e.size).split(",").forEach(function(sz){sz=sz.trim();if(sz)sizeSet[sz]=1;});sourceSet[e.source]=1;});
+  function keysSorted(o){var a=[];for(var k in o)a.push(k);a.sort();return a;}
+  keysSorted(sizeSet).forEach(function(c){var o=document.createElement("option");o.value=c;o.textContent=c;$("fSize").appendChild(o);});
+  keysSorted(sourceSet).sort(function(a,b){return srcName(a).localeCompare(srcName(b));}).forEach(function(c){
+    var o=document.createElement("option");o.value=c;o.textContent=(srcName(c)!==c)?(srcName(c)+" ("+c+")"):c;$("fSource").appendChild(o);
+  });
+
+  // ---------- filter / sort state ----------
+  var st={q:"",version:"all",size:"",source:"",dark:false,hb:false,sort:"name",dir:1,sel:null};
+  function inVersion(e){
+    if(st.version==="2014")return e.edition==="classic";
+    if(st.version==="2024")return e.edition==="one";
+    return true;
+  }
+  function pass(f){
+    var e=eff(f);
+    if(st.q&&(e.name+" "+(e.parent||"")).toLowerCase().indexOf(st.q)<0)return false;
+    if(!inVersion(e))return false;
+    if(st.size&&String(e.size||"").indexOf(st.size)<0)return false;
+    if(st.source&&e.source!==st.source)return false;
+    if(st.dark&&!hasDark(e))return false;
+    if(st.hb&&!e.hb)return false;
+    return true;
+  }
+
+  function hbBadge(e){return ' <span class="sp-badge hb" title="Homebrew: '+esc(srcName(e.source))+'">HB</span>';}
+  var COLS=[
+    {k:"name", t:"Species", cell:function(f){
+      var e=eff(f);
+      if(f.kind==="lin")return '<span class="rc-indent">↳</span> <span class="sp-nm">'+esc(e.name)+'</span> <span class="sp-src">'+esc(e.parent)+'</span>'+(e.hb?hbBadge(e):"");
+      return '<span class="sp-nm">'+esc(e.name)+"</span>"+(e.hb?hbBadge(e):"")+
+        (f.base.lineages&&f.base.lineages.length?' <span class="sp-badge lin" title="'+f.base.lineages.length+' subraces (own rows below)">+'+f.base.lineages.length+"</span>":"");
+    }},
+    {k:"ability", t:"Ability", cell:function(f){var a=abilitySummary(eff(f).ability);return a?esc(a):'<span class="sp-src">—</span>';}},
+    {k:"size", t:"Size", cell:function(f){return esc(eff(f).size||"—");}},
+    {k:"speed", t:"Speed", cell:function(f){return esc(eff(f).speed||"—");}},
+    {k:"senses", t:"Senses", cell:function(f){return esc((eff(f).senses||[]).join(", ")||"—");}},
+    {k:"source", t:"Book", cell:function(f){var e=eff(f);return '<span class="sp-src" title="'+esc(srcName(e.source))+'">'+esc(e.source)+"</span>";}}
+  ];
+  function sortVal(f,k){
+    var e=eff(f);
+    if(k==="name")return ((f.kind==="lin"?e.parent:e.name)+"~"+(f.kind==="lin"?"1"+e.name:"0")).toLowerCase();  // keep a species and its lineages together
+    if(k==="ability")return abilitySummary(e.ability).toLowerCase();
+    if(k==="senses")return (e.senses||[]).join(", ").toLowerCase();
+    return String(e[k]||"").toLowerCase();
+  }
+
+  function renderHead(){
+    $("spHead").innerHTML=COLS.map(function(c){
+      var ar=st.sort===c.k?'<span class="ar">'+(st.dir>0?"▲":"▼")+"</span>":"";
+      return '<th data-k="'+c.k+'">'+c.t+ar+"</th>";
+    }).join("");
+    Array.prototype.forEach.call($("spHead").children,function(th){
+      th.addEventListener("click",function(){
+        var k=th.getAttribute("data-k");
+        if(st.sort===k)st.dir=-st.dir;else{st.sort=k;st.dir=1;}
+        renderHead();renderList();
+      });
+    });
+  }
+  function renderList(){
+    var rows=FLAT.filter(pass);
+    rows.sort(function(a,b){
+      var va=sortVal(a,st.sort),vb=sortVal(b,st.sort);
+      if(va<vb)return -st.dir;if(va>vb)return st.dir;
+      return a.key<b.key?-1:1;
+    });
+    $("spCount").textContent="Showing "+rows.length+" of "+FLAT.length+" species & lineages";
+    var body=$("spBody");
+    if(!rows.length){body.innerHTML='<tr><td colspan="'+COLS.length+'"><div class="sp-empty">No species match these filters.</div></td></tr>';return;}
+    body.innerHTML=rows.map(function(f){
+      var sel=(st.sel===f.key)?" sel":"";
+      return '<tr class="sprow'+sel+(f.kind==="lin"?" rc-sub":"")+'" data-id="'+esc(f.key)+'">'+COLS.map(function(c){return "<td>"+c.cell(f)+"</td>";}).join("")+"</tr>";
+    }).join("");
+    Array.prototype.forEach.call(body.querySelectorAll(".sprow"),function(tr){
+      tr.addEventListener("click",function(){selectEntry(tr.getAttribute("data-id"));});
+    });
+  }
+
+  function entryByKey(k){for(var i=0;i<FLAT.length;i++)if(FLAT[i].key===k)return FLAT[i];return null;}
+  function selectEntry(k){
+    st.sel=k;
+    Array.prototype.forEach.call($("spBody").querySelectorAll(".sprow"),function(tr){tr.classList.toggle("sel",tr.getAttribute("data-id")===k);});
+    renderDetail(entryByKey(k));
+    $("spDetail").classList.add("open");
+  }
+
+  function traitsHtml(list){
+    return (list||[]).map(function(t){return renderEntry({type:"entries",name:t.name,entries:t.entries||[]});}).join("");
+  }
+  function ancestryHtml(anc){
+    if(!anc)return "";
+    var rows=(anc.rows||[]).map(function(r){return "<tr><td>"+esc(r.name)+"</td><td>"+renderTags(r.detail||"")+"</td></tr>";}).join("");
+    return '<div class="sp-sec-h">'+esc(anc.label||"Ancestry")+"</div><table class=\"rc-anc\"><tbody>"+rows+"</tbody></table>";
+  }
+  function metaRow(label,val,wide){return val?'<div class="m'+(wide?" wide":"")+'"><b>'+label+"</b>"+val+"</div>":"";}
+  function renderDetail(f){
+    if(!f){$("spDetailInner").innerHTML='<div class="sp-empty">Select a species to see its full details.</div>';return;}
+    var e=eff(f),b=f.base,L=f.lin;
+    var asi=abilitySummary(e.ability);
+    var asiVal=asi?esc(asi):(e.edition==="one"?"From your background (2024 rules)":"—");
+    var meta=
+      metaRow("Size",esc(e.size||"—"))+
+      metaRow("Speed",esc(e.speed||"—"))+
+      metaRow("Ability Score Increase",asiVal)+
+      metaRow("Senses",esc((e.senses||[]).join(", "))||"—")+
+      metaRow("Languages",esc(langSummary(e.languages))||"—")+
+      metaRow("Proficiencies",profSummary(e),true)+
+      metaRow("Defenses",defSummary(e),true);
+    var body;
+    if(f.kind==="lin"){
+      body=(e.baseTraits.length?'<div class="sp-sec-h">'+esc(b.name)+" traits (shared)</div>"+traitsHtml(e.baseTraits):"")+
+           ancestryHtml(e.ancestry)+
+           (e.linTraits.length?'<div class="sp-sec-h">'+esc(L.name)+" traits</div>"+traitsHtml(e.linTraits):"");
+    }else{
+      body=traitsHtml(b.traits)+ancestryHtml(b.ancestry)+
+        ((b.lineages&&b.lineages.length)?'<div class="sp-sec-h">Subraces / Lineages</div><p class="tag-note">'+b.lineages.map(function(l){return esc(l.name);}).join(", ")+" — each listed as its own row.</p>":"");
+    }
+    var book=(srcName(e.source)!==e.source)?(esc(e.source)+" — "+esc(srcName(e.source))):esc(e.source);
+    var verLabel=e.edition==="one"?"2024":"2014";
+    $("spDetailInner").innerHTML=
+      '<h2>'+esc(e.name)+(e.hb?' <span class="sp-badge hb">HOMEBREW</span>':"")+
+        (f.kind==="lin"?' <span class="sp-src" style="font-weight:400;font-size:14px">'+esc(b.name)+" lineage</span>":"")+"</h2>"+
+      '<div class="sp-sub2">'+verLabel+" &middot; "+book+"</div>"+
+      '<div class="sp-meta">'+meta+"</div>"+
+      '<div class="sp-body">'+body+"</div>";
+    $("spDetail").scrollTop=0;
+  }
+
+  // ---------- wire controls ----------
+  var searchT;
+  $("fSearch").addEventListener("input",function(){clearTimeout(searchT);var v=this.value;searchT=setTimeout(function(){st.q=v.trim().toLowerCase();renderList();},120);});
+  Array.prototype.forEach.call($("fVersion").children,function(b){
+    b.addEventListener("click",function(){st.version=b.getAttribute("data-v");Array.prototype.forEach.call($("fVersion").children,function(x){x.classList.toggle("on",x===b);});renderList();});
+  });
+  $("fSize").addEventListener("change",function(){st.size=this.value;renderList();});
+  $("fSource").addEventListener("change",function(){st.source=this.value;renderList();});
+  $("fDark").addEventListener("change",function(){st.dark=this.checked;renderList();});
+  $("fHB").addEventListener("change",function(){st.hb=this.checked;renderList();});
+  $("fClear").addEventListener("click",function(){
+    st.q="";st.version="all";st.size="";st.source="";st.dark=false;st.hb=false;
+    $("fSearch").value="";$("fSize").value="";$("fSource").value="";$("fDark").checked=false;$("fHB").checked=false;
+    Array.prototype.forEach.call($("fVersion").children,function(x){x.classList.toggle("on",x.getAttribute("data-v")==="all");});
+    renderList();
+  });
+  $("spClose").addEventListener("click",function(){$("spDetail").classList.remove("open");});
+
+  // ---------- boot ----------
+  if(!RACES.length){
+    $("spBody").innerHTML='<tr><td colspan="'+COLS.length+'"><div class="sp-empty">Species data not found. Open this page from the app folder so <code>resources/data-races.js</code> can load.</div></td></tr>';
+  }else{
+    $("spTagline").textContent=FLAT.length+" species & lineages across "+keysSorted(sourceSet).length+" books";
+    renderHead();renderList();
+  }
+})();
+</script>
+</body>
+</html>

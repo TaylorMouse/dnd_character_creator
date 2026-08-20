@@ -12,6 +12,24 @@ lookup=json.load(open(os.path.join(DATA,"generated","gendata-spell-source-lookup
 # normalize lookup keys to lowercase source
 LK={}
 for src,spells in lookup.items(): LK[src.lower()]={k.lower():v for k,v in spells.items()}
+
+# Which books belong to the 2024 ("one") ruleset. 5etools tags entities (items, backgrounds,
+# races, classes...) with edition:"one" but not spells, so we derive the 2024 source set by
+# scanning the data for any entity that carries that flag. For spells the set is XPHB/FRHoF/EFA.
+def _compute_one_sources(root):
+    one=set()
+    for fn in glob.glob(os.path.join(root,"**","*.json"),recursive=True):
+        try: dd=json.load(open(fn,encoding="utf-8"))
+        except Exception: continue
+        stack=[dd]
+        while stack:
+            o=stack.pop()
+            if isinstance(o,dict):
+                if o.get("edition")=="one" and isinstance(o.get("source"),str): one.add(o["source"])
+                stack.extend(o.values())
+            elif isinstance(o,list): stack.extend(o)
+    return one
+ONE_SOURCES=_compute_one_sources(DATA)
 SCHOOL={"A":"Abjuration","C":"Conjuration","D":"Divination","E":"Enchantment","V":"Evocation","I":"Illusion","N":"Necromancy","T":"Transmutation","P":"Psionic"}
 ABIL={"str":"Strength","dex":"Dexterity","con":"Constitution","int":"Intelligence","wis":"Wisdom","cha":"Charisma"}
 
@@ -85,8 +103,7 @@ spells=[]
 for fn in glob.glob(os.path.join(DATA,"spells","spells-*.json")):
     d=json.load(open(fn,encoding="utf-8"))
     for s in d.get("spell",[]):
-        cls=classes_for(s)
-        if not cls["classic"] and not cls["one"]: continue  # only spells assignable to a class
+        cls=classes_for(s)   # class availability per edition; may be empty for a few spells
         conc=bool((s.get("duration") or [{}])[0].get("concentration"))
         sld=s.get("scalingLevelDice")
         if isinstance(sld,list): sld=sld[0] if sld else None
@@ -96,6 +113,7 @@ for fn in glob.glob(os.path.join(DATA,"spells","spells-*.json")):
         basedmg=_md.group(1) if _md else None
         spells.append({
             "name":s["name"],"source":s["source"],"level":s["level"],
+            "ed":"2024" if s["source"] in ONE_SOURCES else "2014",   # ruleset the source book belongs to
             "school":SCHOOL.get(s.get("school"),s.get("school")),
             "cls":cls,"comp":comp_str(s.get("components")),
             "range":range_str(s.get("range")),"conc":conc,"ritual":bool(s.get("meta",{}).get("ritual")),

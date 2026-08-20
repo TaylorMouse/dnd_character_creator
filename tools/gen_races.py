@@ -17,6 +17,56 @@ races=d["race"]; subs=d.get("subrace",[])
 _hb_codes=homebrew.source_codes(_DATA_ROOT)
 races=list(races)+list(homebrew.merged(_DATA_ROOT,"race"))
 subs=list(subs)+list(homebrew.merged(_DATA_ROOT,"subrace"))
+
+# ---- resolve 5etools "_copy" species (MOT Triton, Boggart, Flamekin, Human (Ixalan)...) ----
+# These entries are defined as a copy of another species plus a few modifications; without
+# resolving them they come through as empty shells with no size/speed/traits.
+import copy as _copylib
+_race_index={}
+for _r in races: _race_index[(_r.get("name"),_r.get("source"))]=_r
+def _apply_mod(target,key,ops):
+    if not isinstance(ops,list): ops=[ops]
+    for op in ops:
+        if not isinstance(op,dict): continue
+        mode=op.get("mode"); arr=target.get(key)
+        if arr is None and mode and mode.endswith("Arr"): arr=[]; target[key]=arr
+        items=op.get("items"); items=items if isinstance(items,list) else ([items] if items is not None else [])
+        if mode in ("appendArr","appendIfNotExistsArr"):
+            for it in items:
+                if mode=="appendIfNotExistsArr" and it in arr: continue
+                arr.append(it)
+        elif mode=="prependArr":
+            target[key]=items+arr
+        elif mode=="insertArr":
+            idx=op.get("index",0); arr[idx:idx]=items
+        elif mode=="replaceArr":
+            rep=op.get("replace"); rep=rep.get("index") if isinstance(rep,dict) else rep
+            new=[]; done=False
+            for i,el in enumerate(arr):
+                nm=el.get("name") if isinstance(el,dict) else el
+                if not done and (nm==rep or i==rep): new.extend(items); done=True
+                else: new.append(el)
+            target[key]=new
+        elif mode=="removeArr":
+            names=op.get("names") or op.get("items") or []
+            names=names if isinstance(names,list) else [names]
+            target[key]=[el for el in arr if (el.get("name") if isinstance(el,dict) else el) not in names]
+def _resolve_copy(r,seen=None):
+    if not isinstance(r,dict) or "_copy" not in r: return r
+    seen=seen or set(); cp=r["_copy"]; bkey=(cp.get("name"),cp.get("source"))
+    if bkey in seen or bkey not in _race_index:
+        return {k:v for k,v in r.items() if k!="_copy"}
+    seen.add(bkey)
+    merged=_copylib.deepcopy(_resolve_copy(_race_index[bkey],seen))
+    for k,v in r.items():
+        if k!="_copy": merged[k]=_copylib.deepcopy(v)
+    try:
+        for key,ops in (cp.get("_mod") or {}).items():
+            if key!="*": _apply_mod(merged,key,ops)
+    except Exception: pass
+    merged.pop("_copy",None)
+    return merged
+races=[_resolve_copy(r) for r in races]
 ABIL={"str":"Strength","dex":"Dexterity","con":"Constitution","int":"Intelligence","wis":"Wisdom","cha":"Charisma"}
 SIZE={"T":"Tiny","S":"Small","M":"Medium","L":"Large","H":"Huge","G":"Gargantuan"}
 CORE_PHB={"Dragonborn","Dwarf","Elf","Gnome","Half-Elf","Half-Orc","Halfling","Human","Tiefling"}
@@ -25,6 +75,24 @@ CORE_XPHB={"Aasimar","Dragonborn","Dwarf","Elf","Gnome","Goliath","Halfling","Hu
 def tcase(s): return s.title() if isinstance(s,str) and s.islower() else s
 def spell_name(s):
     return tcase(s.split("|")[0].split("#")[0].strip())
+
+# 5etools records a feat grant structurally: Variant Human and Custom Lineage carry
+# feats:[{"any":1}], and the 2024 Human carries anyFromCategory with category "O" (Origin).
+FEAT_CAT={"O":"Origin","G":"General","FS":"Fighting Style","EB":"Epic Boon"}
+def feat_grant(arr):
+    """-> {"count":n,"category":"Origin"|""} for a species that hands out a feat, else None."""
+    count=0; cat=""
+    for blk in arr or []:
+        if not isinstance(blk,dict): continue
+        for k,v in blk.items():
+            if k=="any" and isinstance(v,int):
+                count+=v
+            elif k=="anyFromCategory" and isinstance(v,dict):
+                count+=v.get("count",1)
+                cats=v.get("category") or []
+                if isinstance(cats,str): cats=[cats]
+                if cats: cat=FEAT_CAT.get(cats[0],cats[0])
+    return {"count":count,"category":cat} if count else None
 
 def parse_ability(arr):
     fixed={}; choose=[]
@@ -222,6 +290,7 @@ def base_obj(r):
       "tools":prof_text(r.get("toolProficiencies")),
       "traits":named_traits(r.get("entries")),
       "ancestry":ancestry_of(r.get("entries")),
+      "feats":feat_grant(r.get("feats")),
     }
     sp=parse_spells(r.get("additionalSpells"))
     pick=detect_spell_pick(r.get("additionalSpells"))

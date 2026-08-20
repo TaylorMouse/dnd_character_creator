@@ -12,6 +12,10 @@ SRC = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEST = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(SRC), "dnd_character_creator")
 
 FILES = ["index.html", "README.md", "LICENSE", ".gitignore",
+         # the rules-reference pages; each one falls back to a "data not found" notice
+         # when the generated data is absent, which is the case in the public checkout
+         "classes.html", "races.html", "spells.html", "creatures.html",
+         "feats.html", "items.html",
          # our own PDF field mapping is fine to publish; the PDF itself and the
          # generated 5etools data are not.
          os.path.join("resources", "pdf-fields.js"),
@@ -19,7 +23,14 @@ FILES = ["index.html", "README.md", "LICENSE", ".gitignore",
          os.path.join("resources", "logo.png"),
          os.path.join("resources", "favicon.ico"),
          os.path.join("resources", "favicon-32.png"),
-         os.path.join("resources", "apple-touch-icon.png")]
+         os.path.join("resources", "apple-touch-icon.png"),
+         # the reference tiles on the opening screen, also our own artwork
+         os.path.join("resources", "dnd-classes.png"),
+         os.path.join("resources", "dnd-species.png"),
+         os.path.join("resources", "dnd-spells.png"),
+         os.path.join("resources", "dnd-creatures.png"),
+         os.path.join("resources", "dnd-feats.png"),
+         os.path.join("resources", "dnd-items.png")]
 DIRS  = ["css", "js", "tools"]
 
 def copy_file(rel):
