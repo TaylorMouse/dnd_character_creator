@@ -71,7 +71,7 @@ app=app.replace("populateLevels();showEdition();",
  "featureLangChoice:featureLangChoice,featureToolChoice:featureToolChoice,featureLangPicks:featureLangPicks,featureToolPicks:featureToolPicks,featureProfChoiceHtml:featureProfChoiceHtml,validChoiceKeys:validChoiceKeys,"+
  "featureNamesList:featureNamesList,speedText:speedText,spellByName:spellByName,currentBg:currentBg,"+
  "attackRows:attackRows,attacksPerAction:attacksPerAction,spellByKey:spellByKey,ordinal:ordinal,"+
- "entryPlain:entryPlain,featureCards:featureCards,exportTags:exportTags,printSheetHtml:printSheetHtml,raceFeatGrant:raceFeatGrant,raceFeatOptions:raceFeatOptions,raceFeatPicks:raceFeatPicks,raceFeatPending:raceFeatPending,raceFeatHtml:raceFeatHtml,allChosenFeats:allChosenFeats,featPickSlots:featPickSlots,featPicks:featPicks,featPicksPending:featPicksPending,featPicksHtml:featPicksHtml,featGrantsAll:featGrantsAll,featResourceBonus:featResourceBonus,optFeatureList:optFeatureList,"+
+ "entryPlain:entryPlain,featureCards:featureCards,exportTags:exportTags,printSheetHtml:printSheetHtml,raceFeatGrant:raceFeatGrant,raceFeatOptions:raceFeatOptions,raceFeatPicks:raceFeatPicks,raceFeatPending:raceFeatPending,raceFeatHtml:raceFeatHtml,acFormulas:acFormulas,spellFilterPool:spellFilterPool,featSpellBlock:featSpellBlock,allChosenFeats:allChosenFeats,featPickSlots:featPickSlots,featPicks:featPicks,featPicksPending:featPicksPending,featPicksHtml:featPicksHtml,featGrantsAll:featGrantsAll,featResourceBonus:featResourceBonus,optFeatureList:optFeatureList,"+
  "itemMechanics:itemMechanics,skillAdvantage:skillAdvantage};");
 eval(app);
 var C=window.__cc,S=C.state;
@@ -301,6 +301,63 @@ check("  Monk with a shield loses it",C.speedInfo().total,30);
 setup("barbarian-classic","Barbarian",1);
 S.race={name:"Elf",source:"PHB"};S.raceLineage="Wood";
 check("  Wood Elf lineage speed 35",C.speedInfo().total,35);
+
+// =====================================================================
+section("6g. Reaction and bonus-action spells reach the action economy");
+setup("wizard-classic","Wizard",10);
+S.subclassName="School of Divination";
+S.spells={cantrips:[],spells:["Shield|PHB","Silvery Barbs|SCC","Feather Fall|PHB","Absorb Elements|XGE","Misty Step|PHB","Fireball|PHB"],levelFilter:"",q:""};
+var _ae=C.actionEconomy();
+function _has(list,nm){for(var i=0;i<list.length;i++)if(list[i].name===nm)return true;return false;}
+checkTrue("  Shield is a reaction",_has(_ae.reaction,"Shield"));
+checkTrue("  Silvery Barbs is a reaction",_has(_ae.reaction,"Silvery Barbs"));
+checkTrue("  Feather Fall is a reaction",_has(_ae.reaction,"Feather Fall"));
+checkTrue("  Absorb Elements is a reaction",_has(_ae.reaction,"Absorb Elements"));
+checkTrue("  Misty Step is a bonus action",_has(_ae.bonus,"Misty Step"));
+checkTrue("  a spell cast with an action is not listed there",!_has(_ae.reaction,"Fireball")&&!_has(_ae.bonus,"Fireball"));
+checkTrue("  and they reach the export",C.exportTags().reactions.indexOf("Silvery Barbs")>=0);
+
+// =====================================================================
+section("6h. A feat that grants spells offers and applies them");
+setup("wizard-classic","Wizard",10);
+S.choices["asi:4:mode"]="feat";S.choices["asi:4:feat"]="Fey Touched";
+S.choices["asi:4:featab0"]="Intelligence";
+var _fr=C.allChosenFeats()[0];
+check("  Fey Touched is taken",_fr?_fr.ft.name:"none","Fey Touched");
+var _fsl=C.featPickSlots(_fr.ft,_fr.base,_fr.store);
+check("  it asks for one spell",_fsl.length,1);
+checkTrue("  from 1st-level enchantment and divination",_fsl[0].pool.length>10);
+checkTrue("  Dissonant Whispers is among them",_fsl[0].pool.indexOf("Dissonant Whispers")>=0);
+checkTrue("  Misty Step is granted outright",C.featGrantsAll().spells.indexOf("Misty Step")>=0);
+checkTrue("  it stays pending until the spell is chosen",C.featPicksPending(_fr.ft,_fr.base,_fr.store));
+S.choices[_fr.base+"sp:0:0"]="Dissonant Whispers";
+check("  then it is resolved",C.featPicksPending(_fr.ft,_fr.base,_fr.store),false);
+checkTrue("  the chosen spell is granted",C.featGrantsAll().spells.indexOf("Dissonant Whispers")>=0);
+checkTrue("  and it reaches the printable sheet",C.exportTags().features_and_traits.indexOf("Dissonant Whispers")>=0);
+// the filters the feats use must all resolve to something
+check("  a school filter resolves",C.spellFilterPool("level=1|school=E;D").length>10,true);
+check("  a lower-case class filter resolves",C.spellFilterPool("level=0|class=cleric").length>3,true);
+check("  a ritual filter resolves",C.spellFilterPool("level=1|class=Cleric|components & miscellaneous=ritual").length>0,true);
+
+// =====================================================================
+section("6i. Natural armour from a species");
+function _natAC(nm,src){
+  setup("wizard-classic","Wizard",5);
+  S.race={name:nm,source:src};S.raceLineage=null;
+  return C.computeAC();
+}
+check("  Tortle's shell is a flat 17",_natAC("Tortle","MPMM"),17);
+check("  Lizardfolk is 13 + Dex",_natAC("Lizardfolk","MPMM"),15);
+check("  Loxodon is 12 + Con",_natAC("Loxodon","GGR"),14);
+check("  Thri-kreen's carapace is 13 + Dex",_natAC("Thri-kreen","AAG"),15);
+check("  a species without it is unchanged",_natAC("Elf","PHB"),13);
+// the shell stacks with a shield, and armour cannot make it worse
+setup("wizard-classic","Wizard",5);
+S.race={name:"Tortle",source:"MPMM"};S.raceLineage=null;
+S.equipment.inventory=[{name:"Shield",source:"PHB",cat:"Armor",ac:2,armorKind:"shield",qty:1,equipped:true}];
+check("  a shield still applies",C.computeAC(),19);
+S.equipment.inventory.push({name:"Leather Armor",source:"PHB",cat:"Armor",ac:11,armorKind:"light",qty:1,equipped:true});
+check("  wearing armour does not lower it",C.computeAC(),19);
 
 // =====================================================================
 section("6f. What a feat grants is offered and applied");

@@ -1196,14 +1196,64 @@
     }
     return [];
   }
+  /* A feat's spell grant names its choices with a 5etools filter rather than a list -
+     Fey Touched offers "level=1|school=E;D", one 1st-level enchantment or divination spell.
+     This resolves such a filter against the spell data. */
+  var SCHOOL_LETTER={A:"Abjuration",C:"Conjuration",D:"Divination",E:"Enchantment",
+                     V:"Evocation",I:"Illusion",N:"Necromancy",T:"Transmutation",P:"Psionic"};
+  function spellFilterPool(filter){
+    var want={lvl:null,schools:null,cls:null,ritual:false};
+    String(filter||"").split("|").forEach(function(part){
+      var i=part.indexOf("=");
+      if(i<0)return;
+      var k=part.slice(0,i).trim().toLowerCase(),v=part.slice(i+1).trim();
+      if(k==="level")want.lvl=parseInt(v,10);
+      else if(k==="school"){
+        want.schools={};
+        v.split(";").forEach(function(s){
+          s=s.trim();
+          want.schools[(SCHOOL_LETTER[s.toUpperCase()]||s).toLowerCase()]=1;
+        });
+      }
+      else if(k==="class")want.cls=v;
+      else if(/ritual/i.test(v))want.ritual=true;
+    });
+    var out=[];
+    (window.CC_SPELLS||[]).forEach(function(s){
+      if(want.lvl!=null&&s.level!==want.lvl)return;
+      if(want.schools&&!want.schools[String(s.school||"").toLowerCase()])return;
+      if(want.ritual&&!s.ritual)return;
+      if(want.cls){
+        // the filters are inconsistently cased ("class=Bard" but "class=cleric")
+        var c=s.cls||{},hit=false,wl=want.cls.toLowerCase();
+        [].concat(c.classic||[],c.one||[]).forEach(function(x){
+          if(String(x).toLowerCase()===wl)hit=true;
+        });
+        if(!hit)return;
+      }
+      if(out.indexOf(s.name)<0)out.push(s.name);
+    });
+    out.sort();
+    return out;
+  }
+  // which spell block of a feat applies (Magic Initiate offers one list per class)
+  function featSpellBlock(ft,base,store){
+    var sp=ft&&ft.spells;
+    if(!sp||!sp.length)return null;
+    if(sp.length===1)return sp[0];
+    var pick=(store||{})[base+"sb"];
+    for(var i=0;i<sp.length;i++)if(sp[i].name===pick)return sp[i];
+    return null;                       // nothing chosen yet
+  }
   /* Every pick a feat asks for, as a list of {key, label, pool} so the renderer and the
      "what did you choose" reader stay in step. */
   /* Guard against a loop: the expertise pool is "skills you are proficient in", and the
      proficient-skill list now includes what feats grant - which is worked out here. While
      building the slots we therefore read the list without the feat contribution. */
   var _inFeatSlots=false;
-  function featPickSlots(ft,base){
+  function featPickSlots(ft,base,store){
     if(!ft)return [];
+    store=store||{};
     var slots=[],i;
     (ft.optProg||[]).forEach(function(p,pi){
       var pool=optFeatureList(p.types,ft.edition).map(function(o){return o.name;});
@@ -1251,6 +1301,18 @@
       for(i=0;i<ft.stl.count;i++)slots.push({kind:"stl",key:base+"stl:"+i,
         label:"Skill or tool proficiency",pool:mixed});
     }
+    // spells the feat grants: pick the list first when it offers several, then the spells
+    var sblocks=ft.spells||[];
+    if(sblocks.length>1&&sblocks[0].name)
+      slots.push({kind:"spellblock",key:base+"sb",label:"Spell list",
+                  pool:sblocks.map(function(b){return b.name;})});
+    var sb=featSpellBlock(ft,base,store);
+    if(sb)(sb.choose||[]).forEach(function(ch,ci){
+      var pool=spellFilterPool(ch.filter);
+      for(var q=0;q<(ch.count||1);q++)
+        slots.push({kind:"spell",key:base+"sp:"+ci+":"+q,
+                    label:(ch.count>1?"Spell ("+(q+1)+" of "+ch.count+")":"Spell"),pool:pool});
+    });
     for(i=0;i<(ft.expertise||0);i++){            // expertise applies to what you are proficient in
       var prof=[];
       var was=_inFeatSlots;_inFeatSlots=true;
@@ -1263,11 +1325,13 @@
     return slots;
   }
   function featPicks(ft,base,store){
-    var out={options:[],skills:[],tools:[],langs:[],expertise:[]};
-    featPickSlots(ft,base).forEach(function(s){
+    var out={options:[],skills:[],tools:[],langs:[],expertise:[],spells:[]};
+    featPickSlots(ft,base,store).forEach(function(s){
       var v=store[s.key];
       if(!v)return;
       if(s.kind==="option")out.options.push(v);
+      else if(s.kind==="spell")out.spells.push(v);
+      else if(s.kind==="spellblock")return;   // which list, not a spell itself
       else if(s.kind==="stl"){
         // one pool of skills and tools: file it under whichever it is
         (ALL_SKILLS.indexOf(v)>=0?out.skills:out.tools).push(v);
@@ -1277,13 +1341,13 @@
     return out;
   }
   function featPicksPending(ft,base,store){
-    var slots=featPickSlots(ft,base);
+    var slots=featPickSlots(ft,base,store);
     for(var i=0;i<slots.length;i++)
       if(slots[i].pool.length&&!store[slots[i].key])return true;   // an empty pool cannot be answered yet
     return false;
   }
   function featPicksHtml(ft,base,store,cls){
-    var slots=featPickSlots(ft,base),html="";
+    var slots=featPickSlots(ft,base,store),html="";
     slots.forEach(function(s){
       var cur=store[s.key]||"",taken=[];
       slots.forEach(function(o){if(o!==s&&o.kind===s.kind){var v=store[o.key];if(v)taken.push(v);}});
@@ -1310,13 +1374,16 @@
      against the resource names the class actually tracks. */
   // everything the taken feats grant, merged (their fixed grants plus what you picked)
   function featGrantsAll(){
-    var out={options:[],skills:[],tools:[],langs:[],expertise:[],armor:[],weapons:[],saves:[]};
+    var out={options:[],skills:[],tools:[],langs:[],expertise:[],armor:[],weapons:[],saves:[],spells:[]};
     function push(a,v){if(v&&a.indexOf(v)<0)a.push(v);}
     allChosenFeats().forEach(function(rec){
       var ft=rec.ft,p=featPicks(ft,rec.base,rec.store);
-      ["options","skills","tools","langs","expertise"].forEach(function(k){
-        p[k].forEach(function(v){push(out[k],v);});
+      ["options","skills","tools","langs","expertise","spells"].forEach(function(k){
+        (p[k]||[]).forEach(function(v){push(out[k],v);});
       });
+      // spells the feat grants outright (Fey Touched's Misty Step)
+      var sb=featSpellBlock(ft,rec.base,rec.store);
+      if(sb)(sb.fixed||[]).forEach(function(v){push(out.spells,v);});
       ["skills","tools","langs","armor","weapons","saves"].forEach(function(k){
         var g=ft[k];
         if(g&&g.fixed)g.fixed.forEach(function(v){push(out[k],v);});
@@ -1822,21 +1889,45 @@
      are read from the feature text rather than hard-coded, so any source works. */
   var ABIL_WORD={strength:"Strength",dexterity:"Dexterity",constitution:"Constitution",
                  intelligence:"Intelligence",wisdom:"Wisdom",charisma:"Charisma"};
+  /* Alternative ways to work out AC, read from a feature's own words: the Monk's and
+     Barbarian's Unarmored Defense, a Draconic sorcerer's scales, and the natural armour a
+     species can have. Two shapes appear:
+       "AC equals 10 + your Dexterity modifier + ..."  - a base plus ability modifiers
+       "a base AC of 17 (your Dexterity modifier doesn't affect this number)" - a flat
+         number, which is a shell or carapace and applies whatever else is worn. */
   function acFormulas(){
     var out=[],seen={};
     featuresAndTraits().forEach(function(t){
-      var txt=entryText(t.entries||"");
-      var m=/(?:armor class|ac)\s*(?:equals|is)\s*(?:equal to\s+)?(\d+)\s*(?:\+|plus)\s*([^.]{0,110})/i.exec(txt);
-      if(!m)return;
-      var tail=m[2];
-      if(/beast/i.test(tail))return;                 // wild-shape form AC, not the character's
-      var mods=[],re=/(strength|dexterity|constitution|intelligence|wisdom|charisma)/gi,mm;
-      while((mm=re.exec(tail)))mods.push(ABIL_WORD[mm[1].toLowerCase()]);
-      if(!mods.length)return;
-      var key=t.name+"|"+m[1]+"|"+mods.join(",");
-      if(seen[key])return;seen[key]=1;
-      out.push({label:t.name,base:parseInt(m[1],10),mods:mods,
-                noShield:/wielding a shield/i.test(txt)&&!/can (?:use|wield) a shield/i.test(txt)});
+      var txt=plainTags(entryText(t.entries||""));
+      if(/beast/i.test(txt)&&!/natural armor/i.test(txt))return;   // wild-shape form AC
+      // base + ability modifiers
+      var m=/(?:armor class|\bac\b)\s*(?:equals|is|of)\s*(?:equal to\s+)?(\d+)\s*(?:\+|plus)\s*([^.]{0,110})/i.exec(txt);
+      if(m){
+        var tail=m[2],mods=[],re=/(strength|dexterity|constitution|intelligence|wisdom|charisma)/gi,mm;
+        while((mm=re.exec(tail)))mods.push(ABIL_WORD[mm[1].toLowerCase()]);
+        if(mods.length){
+          var key=t.name+"|"+m[1]+"|"+mods.join(",");
+          if(!seen[key]){
+            seen[key]=1;
+            out.push({label:t.name,base:parseInt(m[1],10),mods:mods,
+                      noShield:/wielding a shield/i.test(txt)&&!/can (?:use|wield) a shield/i.test(txt)});
+          }
+          return;
+        }
+      }
+      /* A flat natural armour: the Tortle's shell is AC 17 and Dexterity never applies.
+         It is not conditional on going unarmoured either - the shell says you gain no
+         benefit from armour, so the number stands however the character is equipped. */
+      var fm=/(?:base\s+)?(?:armor class|\bac\b)\s*(?:of|is|equals)\s*(\d+)/i.exec(txt);
+      if(fm&&/natural armor|shell|carapace/i.test(t.name+" "+txt)&&
+         /modifier\s+doesn'?t\s+affect|doesn'?t\s+affect\s+this\s+number/i.test(txt)){
+        var k2=t.name+"|flat|"+fm[1];
+        if(!seen[k2]){
+          seen[k2]=1;
+          out.push({label:t.name,base:parseInt(fm[1],10),mods:[],flat:true,
+                    noShield:/no benefit from.*shield/i.test(txt)});
+        }
+      }
     });
     return out;
   }
@@ -1850,6 +1941,12 @@
     });
     var shieldBonus=shield?((shield.ac||2)+shield.bonus):0;
     var opts=[];
+    // a shell or carapace gives a fixed number whatever else is worn
+    acFormulas().forEach(function(f){
+      if(!f.flat)return;
+      if(f.noShield&&shield)return;
+      opts.push({label:f.label,parts:[[f.label,f.base]],total:f.base,flat:true});
+    });
     if(body){
       var b=(body.ac||10),dexPart=body.armorKind==="light"?dex:(body.armorKind==="medium"?Math.min(dex,2):0);
       var parts=[[body.name,b]];
@@ -1859,6 +1956,7 @@
     }else{
       opts.push({label:"Unarmoured",parts:[["Base",10],["Dex",dex]],total:10+dex});
       acFormulas().forEach(function(f){
+        if(f.flat)return;                            // already offered above
         if(f.noShield&&shield)return;                // e.g. Monk cannot use a shield with it
         var p=[[f.label,f.base]],tot=f.base;
         f.mods.forEach(function(a){var v=abMod(totalScore(a));p.push([ABIL_ABBR[a]||a,v]);tot+=v;});
@@ -2880,6 +2978,19 @@
     var race=currentRace(),lin=race?currentLineage(race):null;
     var rsp=allRacialSpells();
     rsp.forEach(function(sp){var s=spellByName(sp.name);if(s&&s.time&&s.time.indexOf("bonus")>=0){var c={};for(var kk in s)c[kk]=s[kk];c._origin=(race?race.name:"species")+" — innate spell";push(out.bonus,"b"+s.name,c);}});
+    /* A prepared or known spell cast as a reaction or a bonus action belongs in the action
+       economy as much as a feature does - Shield, Silvery Barbs and Feather Fall are easy
+       to miss otherwise, since they appear under neither actions nor attacks. Spells cast
+       with a full action are left out: the attack table already lists the ones that matter,
+       and the rest would bury the list. */
+    [].concat(state.spells.cantrips||[],state.spells.spells||[]).forEach(function(k){
+      var s=spellByKey(k);
+      if(!s||!s.time)return;
+      var c={};for(var kk in s)c[kk]=s[kk];
+      c._origin=state.className+" spell"+(s.level?", level "+s.level:" cantrip");
+      if(/reaction/i.test(s.time))push(out.reaction,"r"+s.name,c);
+      else if(/bonus/i.test(s.time))push(out.bonus,"b"+s.name,c);
+    });
     // attack options: the on-hit riders themselves, then any feature that augments one by
     // name (Physician's Touch improves Hand of Harm), skipping anything already shown above
     var riderNames={};
@@ -3149,6 +3260,17 @@
           origin:(lin?lin.name:(race?race.name:"Species"))+" — feat from your species"});
       }
     })();
+    // spells a feat grants, so they are on the sheet and the printout
+    allChosenFeats().forEach(function(rec){
+      var got=[],p=featPicks(rec.ft,rec.base,rec.store);
+      var sb=featSpellBlock(rec.ft,rec.base,rec.store);
+      if(sb)(sb.fixed||[]).forEach(function(v){got.push(v);});
+      (p.spells||[]).forEach(function(v){got.push(v);});
+      if(!got.length)return;
+      featItems.push({name:rec.ft.name+" spells",
+        entries:["You gain "+got.join(", ")+"."],
+        origin:rec.ft.name+" - spells from the feat"});
+    });
     // the options a feat let you choose (Metamagic Adept's two Metamagic options, and so on)
     allChosenFeats().forEach(function(rec){
       var p=featPicks(rec.ft,rec.base,rec.store);
@@ -3451,6 +3573,10 @@
       var rk=[],rseen={};rsp.forEach(function(sp){var s=spellByName(sp.name);if(s&&!rseen[s.name]){rseen[s.name]=1;rk.push(s.name+"|"+s.source);}});
       if(rk.length)spBody+='<div class="spell-lvl-h">Racial / Innate</div>'+sheetCollapse(spellItems(rk),"rc");
     }
+    // spells a feat grants (Fey Touched, Magic Initiate, Ritual Caster...)
+    var fsp=featGrantsAll().spells,fk=[],fseen={};
+    fsp.forEach(function(n){var s=spellByName(n);if(s&&!fseen[s.name]){fseen[s.name]=1;fk.push(s.name+"|"+s.source);}});
+    if(fk.length)spBody+='<div class="spell-lvl-h">From your feats</div>'+sheetCollapse(spellItems(fk),"fs");
     var copts=concOptions();
     if(copts.length){
       var cur=state.sheet.conc||"";
@@ -4065,16 +4191,7 @@
     if(fa.length)lines=lines.concat([""],fa);
     T.actions=lines.join("\n");
     T.bonus_actions=names(ae.bonus).join("\n")||"-";
-    // reactions include spells cast as a reaction (Shield, Counterspell) - easy to miss
-    var reacts=names(ae.reaction),spKeys=[].concat((state.spells&&state.spells.cantrips)||[],(state.spells&&state.spells.spells)||[]);
-    spKeys.forEach(function(k){
-      var s=spellByKey(k);
-      if(s&&/reaction/i.test(String(s.time||""))){
-        var lbl=s.name+" (spell"+(s.level?", level "+s.level:" cantrip")+")";
-        if(reacts.indexOf(lbl)<0)reacts.push(lbl);
-      }
-    });
-    T.reactions=reacts.join("\n")||"-";
+    T.reactions=names(ae.reaction).join("\n")||"-";   // spells included, see actionEconomy
     T.other_actions=names(ae.attack).map(function(n){return "On hit: "+n;}).join("\n")||"-";
     // features & traits, exactly as the sheet's expanded card shows them
     var blocks=featureCards().map(function(c){

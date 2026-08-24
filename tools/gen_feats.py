@@ -93,6 +93,49 @@ def parse_expertise(arr):
             elif v is True: n += 1
     return n or None
 
+def parse_spells(arr):
+    """A feat's spell grants.
+
+    5etools nests these: each block may be named ("Bard Spells" - the ones with several
+    named blocks make you pick a class first), and lists spells under innate/known/
+    prepared/expanded keyed by class level, where "_" means always. An entry is either a
+    spell name or {"choose": "level=1|school=E;D"} - a filter the app resolves against the
+    spell list. Only the always-on ("_") entries matter for a feat.
+    """
+    blocks = []
+    for blk in arr or []:
+        if not isinstance(blk, dict): continue
+        fixed, choose = [], []
+        def take(entry):
+            if isinstance(entry, str):
+                nm = entry.split("#")[0].split("|")[0].strip()
+                if nm: fixed.append(nm.title())
+            elif isinstance(entry, dict) and entry.get("choose"):
+                choose.append({"filter": entry["choose"], "count": entry.get("count", 1)})
+        for grp in ("innate", "known", "prepared", "expanded"):
+            lvls = blk.get(grp) or {}
+            if not isinstance(lvls, dict): continue
+            body = lvls.get("_")
+            if body is None: continue
+            if isinstance(body, list):
+                for e in body: take(e)
+            elif isinstance(body, dict):
+                # {"daily": {"1e": [...]}} - once per long rest, or per short rest
+                for _rate, lst in body.items():
+                    if isinstance(lst, dict):
+                        for _n, l2 in lst.items():
+                            for e in (l2 or []): take(e)
+                    else:
+                        for e in (lst or []): take(e)
+        if not fixed and not choose: continue
+        b = {"fixed": fixed, "choose": choose}
+        if blk.get("name"): b["name"] = blk["name"]
+        ab = blk.get("ability")
+        # "ability" is usually a code or "inherit", but can be an object ({"choose": [...]})
+        if isinstance(ab, str) and ab != "inherit": b["ability"] = ABIL.get(ab, ab)
+        blocks.append(b)
+    return blocks or None
+
 def parse_optprog(arr):
     """Metamagic Adept, Martial Adept, Eldritch Adept, Fighting Initiate: a feat that
     hands out options from a class's list, identified by 5etools feature-type codes."""
@@ -129,13 +172,13 @@ for f in d["feat"]:
         ("saves",     parse_prof(f.get("savingThrowProficiencies"))),
         ("stl",       parse_stl(f.get("skillToolLanguageProficiencies"))),
         ("expertise", parse_expertise(f.get("expertise"))),
+        ("spells",    parse_spells(f.get("additionalSpells"))),
     ):
         if val: o[key] = val
     if f.get("resist"):          o["resist"]  = [_norm(x) for x in f["resist"] if isinstance(x, str)]
     if f.get("immune"):          o["immune"]  = [_norm(x) for x in f["immune"] if isinstance(x, str)]
     if f.get("conditionImmune"): o["condImmune"] = [_norm(x) for x in f["conditionImmune"] if isinstance(x, str)]
     if f.get("senses"):          o["senses"]  = f["senses"]
-    if f.get("additionalSpells"): o["hasSpells"] = True   # the spell grants themselves are not applied yet
     out.append(o)
 out.sort(key=lambda x: x["name"])
 io.open(OUT, "w", encoding="utf-8").write(
