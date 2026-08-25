@@ -38,6 +38,24 @@ def category(it):
     return CAT.get(typecode(it.get("type")),"Other Gear")
 ARMOR_KIND={"LA":"light","MA":"medium","HA":"heavy","S":"shield"}
 
+# Fields that change a character's numbers while the item is worn or wielded. They are
+# carried through verbatim so the app can apply them; 5etools writes the bonuses as signed
+# strings ("+1"), critThreshold as a number, and ability/modifySpeed/grantsProficiency as
+# small objects.
+BONUS_KEYS = ("bonusWeapon", "bonusWeaponAttack", "bonusWeaponDamage", "bonusAc",
+              "bonusSavingThrow", "bonusSavingThrowConcentration",
+              "bonusSpellAttack", "bonusSpellSaveDc", "bonusAbilityCheck",
+              "bonusProficiencyBonus", "critThreshold", "modifySpeed",
+              "ability", "grantsProficiency")
+
+
+def carry_bonuses(dst, src):
+    for k in BONUS_KEYS:
+        if src.get(k) is not None:
+            dst[k] = src[k]
+    return dst
+
+
 def slim(it):
     tc=typecode(it.get("type"))
     o={"name":it["name"],"source":it["source"],"cat":category(it),
@@ -64,8 +82,7 @@ def slim(it):
     if it.get("source") in _hb_codes: o["hb"]=True     # third-party, flagged in the UI
     ra=it.get("reqAttune")
     if ra: o["attune"]=ra          # True | "optional" | condition string e.g. "by a spellcaster"
-    if it.get("bonusWeapon"): o["bonusWeapon"]=it["bonusWeapon"]   # "+1" / "+2" / "+3"
-    if it.get("bonusAc"): o["bonusAc"]=it["bonusAc"]
+    carry_bonuses(o,it)
     if it.get("baseItem"): o["baseItem"]=it["baseItem"].split("|")[0]
     # category flags so magic variants can be matched to legal base weapons
     tags=[k for k in ("weapon","sword","axe","bow","crossbow","dagger","hammer","mace","polearm","spear","club","staff") if it.get(k) is True]
@@ -105,8 +122,7 @@ for v in mvs:
     _ent=inh.get("entries") or v.get("entries")
     if _ent: vo["entries"]=_ent
     if inh.get("reqAttune"): vo["attune"]=inh["reqAttune"]
-    if inh.get("bonusWeapon"): vo["bonusWeapon"]=inh["bonusWeapon"]
-    if inh.get("bonusAc"): vo["bonusAc"]=inh["bonusAc"]
+    carry_bonuses(vo,inh)
     if vo["source"] in _hb_codes: vo["hb"]=True
     # which base items this variant may be applied to (e.g. [{"sword":true}] -> ["sword"])
     req=[]
@@ -180,9 +196,7 @@ for v in mvs:
         o["baseSrc"]=bi.get("source","")  # which printing of the base item this is built on
         o.pop("entries",None)            # not repeated; taken from the parent
         if inh.get("reqAttune"): o["attune"]=inh["reqAttune"]
-        if inh.get("bonusWeapon"): o["bonusWeapon"]=inh["bonusWeapon"]
-        if inh.get("bonusAc"): o["bonusAc"]=inh["bonusAc"]
-        if inh.get("bonusSpellAttack"): o["bonusSpellAttack"]=inh["bonusSpellAttack"]
+        carry_bonuses(o,inh)
         if src in _hb_codes: o["hb"]=True
         else: o.pop("hb",None)
         o.pop("value",None)              # a magic version is not priced like the mundane one

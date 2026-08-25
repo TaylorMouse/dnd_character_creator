@@ -1655,6 +1655,7 @@
   }
   function abMod(score){return Math.floor((score-10)/2);}
   function modStr(m){return (m>=0?"+":"")+m;}
+  function capWord(s){s=String(s);return s.charAt(0).toUpperCase()+s.slice(1);}
   // aggregate every ability increase the character has earned/chosen so far
   function abilityBonusMap(){
     var map={};ABILITIES.forEach(function(a){map[a]=[];});
@@ -1699,7 +1700,15 @@
     if(ov!==undefined&&ov!==""&&ov!==null&&!isNaN(parseInt(ov,10)))return parseInt(ov,10);
     var base=baseScore(a);if(base==null)base=0;
     var other=parseInt(state.abilities.other[a],10)||0;
-    return base+bonusSum(a)+other;
+    var tot=base+bonusSum(a)+other;
+    /* Worn gear last: a Belt of Hill Giant Strength sets Strength to 21 unless it is
+       already higher, an Ioun Stone of Agility simply adds. */
+    var ib=itemBonuses().abil[a];
+    if(ib){
+      tot+=ib.delta;
+      if(ib.floor!=null&&ib.floor>tot)tot=ib.floor;
+    }
+    return tot;
   }
 
   function renderAbilities(){
@@ -1884,6 +1893,128 @@
     return {name:it.name+" ("+b.name+")",ac:b.ac,armorKind:b.armorKind,bonus:bonus};
   }
 
+  /* ---------- what worn gear does to the numbers ----------
+     Magic items carry their effects as data rather than as prose: a Cloak of Protection is
+     bonusAc +1 and bonusSavingThrow +1, a Belt of Hill Giant Strength sets Strength to 21,
+     Boots of Speed double the walking speed. Everything equipped is added up here once and
+     the rest of the sheet reads the totals, so a newly added item needs no new code.
+     An item that calls for attunement does nothing until it is attuned. */
+  function abilFromAbbr(k){
+    k=String(k).toLowerCase();
+    for(var a in ABIL_ABBR)if(ABIL_ABBR[a].toLowerCase()===k)return a;
+    return null;
+  }
+  // categories worn about the person, and those held in the hand
+  var WEAR_CATS={Ring:1,Wondrous:1,Armor:1},HOLD_CATS={Weapon:1,Rod:1,Staff:1,Wand:1};
+  var EFFECT_KEYS=["bonusAc","bonusWeapon","bonusWeaponAttack","bonusWeaponDamage",
+                   "bonusSavingThrow","bonusSavingThrowConcentration","bonusSpellAttack",
+                   "bonusSpellSaveDc","bonusAbilityCheck","bonusProficiencyBonus",
+                   "critThreshold","modifySpeed","ability","grantsProficiency"];
+  function itemHasEffect(it){
+    var info=itemInfo(it.name,it.source)||{};
+    for(var i=0;i<EFFECT_KEYS.length;i++){
+      var k=EFFECT_KEYS[i];
+      if(it[k]!==undefined&&it[k]!==null)return true;
+      if(info[k]!==undefined&&info[k]!==null)return true;
+    }
+    return false;
+  }
+  /* Whether an item can be put on or taken up, and what to call doing so. A cloak or ring
+     has to be wearable or its bonuses never reach the sheet, so anything that changes a
+     number - or that asks to be attuned - can be equipped, not only armour and weapons. */
+  function equipInfo(it){
+    var cat=it.cat||(itemInfo(it.name,it.source)||{}).cat||"";
+    if(resolveArmor(it)||isVariantArmor(it)||it.armorKind)return {ok:true,verb:it.equipped?"Worn":"Wear"};
+    if(HOLD_CATS[cat])return {ok:true,verb:it.equipped?"Wielding":"Wield"};
+    if(WEAR_CATS[cat]||itemAttune(it)||itemHasEffect(it))return {ok:true,verb:it.equipped?"Worn":"Wear"};
+    return {ok:false,verb:""};
+  }
+  function itemBonuses(){
+    var t={ac:0,save:0,saveConc:0,spellAtk:0,spellDc:0,abilCheck:0,prof:0,crit:20,
+           abil:{},speed:[],profItems:[],
+           sources:{ac:[],save:[],saveConc:[],spellAtk:[],spellDc:[],abilCheck:[],prof:[],crit:[]}};
+    state.equipment.inventory.forEach(function(it){
+      if(!it.equipped)return;
+      var att=itemAttune(it),attRequired=!!att&&att!=="optional";
+      if(attRequired&&!it.attuned)return;                 // no benefit before attuning
+      var info=itemInfo(it.name,it.source)||{},nm=it.name;
+      function f(k){var v=it[k];return v===undefined||v===null?info[k]:v;}
+      function num(k){var v=f(k);return v==null?0:(parseInt(String(v).replace("+",""),10)||0);}
+      function add(k,amt){if(amt){t[k]+=amt;t.sources[k].push(nm+" "+modStr(amt));}}
+      /* Armour and shields are left to acInfo: it already reads their AC and magic bonus
+         through resolveArmor, and counting bonusAc here as well would double it. A variant
+         still waiting for its base armour counts as armour too - it is not a second source
+         of AC, it is an incomplete one. */
+      if(!resolveArmor(it)&&!isVariantArmor(it)&&!it.armorKind)add("ac",num("bonusAc"));
+      add("save",num("bonusSavingThrow"));
+      add("saveConc",num("bonusSavingThrowConcentration"));
+      add("spellAtk",num("bonusSpellAttack"));
+      add("spellDc",num("bonusSpellSaveDc"));
+      add("abilCheck",num("bonusAbilityCheck"));
+      add("prof",num("bonusProficiencyBonus"));
+      var ct=parseInt(f("critThreshold"),10);
+      if(ct&&ct<t.crit){t.crit=ct;t.sources.crit=[nm+" (crit on "+ct+"+)"];}
+      if(f("grantsProficiency")===true)t.profItems.push(nm);
+      /* Two shapes: "your Strength score becomes 21" is a floor, written as
+         {static:{str:21}}; "your Constitution increases by 2" is a straight bonus. */
+      var ab=f("ability");
+      if(ab&&typeof ab==="object"){
+        function slot(k){
+          var full=abilFromAbbr(k);if(!full)return null;
+          if(!t.abil[full])t.abil[full]={delta:0,floor:null,from:[]};
+          if(t.abil[full].from.indexOf(nm)<0)t.abil[full].from.push(nm);
+          return t.abil[full];
+        }
+        for(var sk in (ab.static||{})){
+          var s1=slot(sk);
+          if(s1&&(s1.floor==null||ab.static[sk]>s1.floor))s1.floor=ab.static[sk];
+        }
+        for(var dk in ab){
+          if(dk==="static"||dk==="choose"||dk==="from"||dk==="count"||dk==="amount")continue;
+          var s2=slot(dk);
+          if(s2&&typeof ab[dk]==="number")s2.delta+=ab[dk];
+        }
+      }
+      var ms=f("modifySpeed");
+      if(ms&&typeof ms==="object"){
+        ["static","bonus","multiply","equal"].forEach(function(op){
+          for(var mk in (ms[op]||{}))t.speed.push({op:op,kind:mk,val:ms[op][mk],from:nm});
+        });
+      }
+    });
+    return t;
+  }
+  /* A plain list of what the worn gear is doing, so it is obvious whether an item has
+     been picked up by the sheet or is still waiting to be equipped or attuned. */
+  function itemEffectsHtml(){
+    var b=itemBonuses(),rows=[];
+    function row(v,label,src){if(v)rows.push(modStr(v)+" "+label+" <span class=\"res-sub\">("+esc(src.join(" + "))+")</span>");}
+    row(b.ac,"AC",b.sources.ac);
+    row(b.save,"to all saving throws",b.sources.save);
+    row(b.saveConc,"to concentration saves",b.sources.saveConc);
+    row(b.abilCheck,"to all ability checks",b.sources.abilCheck);
+    row(b.spellAtk,"to spell attacks",b.sources.spellAtk);
+    row(b.spellDc,"to spell save DC",b.sources.spellDc);
+    row(b.prof,"proficiency bonus",b.sources.prof);
+    for(var a in b.abil){
+      var e=b.abil[a],bits=[];
+      if(e.delta)bits.push(modStr(e.delta));
+      if(e.floor!=null)bits.push("at least "+e.floor);
+      if(bits.length)rows.push(a+": "+bits.join(", ")+' <span class="res-sub">('+esc(e.from.join(" + "))+")</span>");
+    }
+    b.speed.forEach(function(s){
+      var how=s.op==="static"?("set to "+s.val+" ft."):
+              s.op==="bonus"?(modStr(s.val)+" ft."):
+              s.op==="multiply"?("doubled (x"+s.val+")"):
+              ("equal to your "+(s.val==="walk"?"walking":String(s.val))+" speed");
+      rows.push(capWord(s.kind)+" speed "+how+' <span class="res-sub">('+esc(s.from)+")</span>");
+    });
+    if(b.crit<20)rows.push("Critical hits on "+b.crit+"–20 " +'<span class="res-sub">('+esc(b.sources.crit.join(" + "))+")</span>");
+    b.profItems.forEach(function(n){rows.push("Counts as proficient with it "+'<span class="res-sub">('+esc(n)+")</span>");});
+    if(!rows.length)return "";
+    return '<div class="res-sub" style="margin-bottom:8px"><b>Item effects</b><br>'+rows.join("<br>")+"</div>";
+  }
+
   /* ---------- AC ----------
      Alternative AC formulas (Unarmored Defense, Natural Armor, Draconic Resilience, ...)
      are read from the feature text rather than hard-coded, so any source works. */
@@ -1970,6 +2101,8 @@
     if(body&&hasStyle("Defense")){finalParts.push(["Defense style",1]);total+=1;}  // +1 AC while in armour
     var fxt=fxTotals();                                  // e.g. Bladesong while it is on
     if(fxt.ac){finalParts.push([fxt.sources.ac.join(" + "),fxt.ac]);total+=fxt.ac;}
+    var ibac=itemBonuses();                              // a cloak or ring worn alongside
+    if(ibac.ac){finalParts.push([ibac.sources.ac.join(" + "),ibac.ac]);total+=ibac.ac;}
     var other=parseInt(state.sheet.acOther,10)||0;
     if(other){finalParts.push(["Other",other]);total+=other;}
     var ov=state.sheet.acOverride;
@@ -2102,10 +2235,9 @@
       var att=itemAttune(it),info=itemInfo(it.name,it.source),full=itemEntriesFull(it),hasDesc=full.length;
       var meta=it.cat+(it.rarity&&it.rarity!=="none"?" · "+it.rarity:"")+(it.dmg?" · "+it.dmg+" "+dmgAbbr(it.dmgType):"")+(it.ac&&it.armorKind!=="shield"?" · AC "+it.ac:"")+(it.armorKind==="shield"?" · +"+(it.ac||2)+" AC":"")+(att?" · "+attuneNote(att):"");
       var ctrl='<input type="number" min="1" class="inv-qty" data-i="'+i+'" value="'+(it.qty||1)+'">';
-      var ra2=resolveArmor(it),equippable=ra2||it.cat==="Weapon";
-      if(equippable){
-        var lbl=ra2?(it.equipped?"Worn":"Wear"):(it.equipped?"Wielding":"Wield");
-        ctrl+='<button class="equip-btn'+(it.equipped?" on":"")+'" data-i="'+i+'">'+lbl+"</button>";
+      var eqi=equipInfo(it);
+      if(eqi.ok){
+        ctrl+='<button class="equip-btn'+(it.equipped?" on":"")+'" data-i="'+i+'">'+eqi.verb+"</button>";
       }
       ctrl+='<button class="rm-btn" data-i="'+i+'" title="Remove">×</button>';
       var desc=hasDesc?'<div class="inv-desc">'+full.map(renderEntry).join("")+"</div>":"";
@@ -2123,7 +2255,8 @@
   }
 
   /* ---------- spells ---------- */
-  function profBonus(){return Math.floor((state.level-1)/4)+2;}
+  // the Ioun Stone of Mastery and its kind raise this, and everything built on it follows
+  function profBonus(){return Math.floor((state.level-1)/4)+2+itemBonuses().prof;}
   /* The ability a class uses for its save DCs. Spellcasters use their spellcasting
      ability; martial classes key their DC-bearing features off a set ability — the Monk's
      ki DC is Wisdom, and the MPMB sheet uses Constitution for Barbarian, Dexterity for
@@ -2151,7 +2284,7 @@
   }
   function abilitySaveDc(){
     var ab=dcAbility();
-    return ab?8+profBonus()+abMod(totalScore(ab)):null;
+    return ab?8+profBonus()+abMod(totalScore(ab))+itemBonuses().spellDc:null;
   }
   function maxSpellLevel(caster,L){
     switch(caster){
@@ -2216,7 +2349,9 @@
     if(!state.className){host.innerHTML='<p class="sec-note">Choose a class first (step 1).</p>';return;}
     var info=spellInfo();
     if(!info){host.innerHTML='<p class="sec-note"><b>'+esc(state.className)+'</b> has no class spellcasting. (Some subclasses grant spells — not handled here yet.)</p>';return;}
-    var mod=abMod(totalScore(info.ability)),prof=profBonus(),dc=8+prof+mod,atk=prof+mod;
+    var ibs=itemBonuses();   // a Rod of the Pact Keeper and the like
+    var mod=abMod(totalScore(info.ability)),prof=profBonus(),
+        dc=8+prof+mod+ibs.spellDc,atk=prof+mod+ibs.spellAtk;
     var selC=state.spells.cantrips,selS=state.spells.spells;
     function stat(v,l){return '<div><div class="sv">'+v+'</div><div class="sl">'+l+"</div></div>";}
     var html='<div class="sc-summary">'+stat(esc(info.ability),"Ability")+stat(dc,"Spell Save DC")+stat(modStr(atk),"Spell Attack")+stat(info.maxLevel||"—","Max Spell Level")+stat(selC.length+"/"+info.cantripsKnown,"Cantrips")+stat(selS.length+"/"+info.spellsCount,(info.prepared?"Prepared":"Known"))+"</div>";
@@ -2608,7 +2743,8 @@
   function skillBonus(sk){
     var ps=proficientSkills(),ex=expertiseSkills(),p=0;
     if(ps[sk])p=(ex[sk]?profBonus()*2:profBonus());
-    return abMod(totalScore(SKILL_ABILITY[sk]))+p;
+    // a Stone of Good Luck applies to every ability check, so to every skill
+    return abMod(totalScore(SKILL_ABILITY[sk]))+p+itemBonuses().abilCheck;
   }
   function passiveScore(sk){return 10+skillBonus(sk);}
   function expertiseHtml(f){
@@ -2628,6 +2764,10 @@
         }).join("")+"</select>";
     }
     return {html:html+"</div>",count:EXPERTISE_PICKS,pending:picked<EXPERTISE_PICKS};
+  }
+  // proficiency where you have it, plus a Cloak of Protection and the like
+  function saveBonus(a){
+    return abMod(totalScore(a))+(savingProfs()[a]?profBonus():0)+itemBonuses().save;
   }
   function savingProfs(){
     var set={},fd=state.fdata,st=fd&&fd.proficiencies&&fd.proficiencies.savingThrows;
@@ -2727,7 +2867,24 @@
       parts.push([f.name,amount]);total+=amount;
     });
     total=0;parts.forEach(function(pp){total+=pp[1];});     // recount, active effects may have added
-    return {total:total,parts:parts,notes:notes,extra:String(raw).replace(/^\s*\d+\s*ft\.?,?\s*/,"")};
+    /* Worn gear can set, add to, double or mirror a speed. Boots of Striding and Springing
+       fix the walk at 30, Boots of Speed double it, and Winged Boots give a fly speed equal
+       to the walk - that last one is another way to move, not more of this one, so it is
+       reported alongside rather than added in. */
+    var extras=[];
+    itemBonuses().speed.forEach(function(s){
+      if(s.kind!=="walk"){
+        if(s.op==="equal")extras.push(capWord(s.kind)+" "+total+" ft. ("+s.from+")");
+        else if(s.op==="static")extras.push(capWord(s.kind)+" "+s.val+" ft. ("+s.from+")");
+        else if(s.op==="bonus")extras.push(capWord(s.kind)+" "+(total+s.val)+" ft. ("+s.from+")");
+        return;
+      }
+      if(s.op==="static"){parts.push([s.from+" (sets speed to "+s.val+")",s.val-total]);total=s.val;}
+      else if(s.op==="bonus"){parts.push([s.from,s.val]);total+=s.val;}
+      else if(s.op==="multiply"){var was=total;total=Math.floor(total*s.val);parts.push([s.from+" (x"+s.val+")",total-was]);}
+    });
+    return {total:total,parts:parts,notes:notes,extras:extras,
+            extra:[String(raw).replace(/^\s*\d+\s*ft\.?,?\s*/,"")].concat(extras).filter(Boolean).join(", ")};
   }
   function speedText(){var s=speedInfo();return s.total+" ft."+(s.extra?", "+s.extra:"");}
   function speedWhy(){
@@ -3023,6 +3180,23 @@
     if(!m.dmg&&(x=/\+(\d+) bonus to the damage roll/i.exec(txt)))m.dmg=parseInt(x[1],10);
     // some grant dice instead of a flat bonus, which cannot fold into one number
     if((x=/(?:extra|additional) (\d+d\d+) damage/i.exec(txt))||(x=/deal an extra (\d+d\d+)/i.exec(txt)))m.dmgDice=x[1];
+    /* That die can be raised by a feature gained later, and the clause lives in the other
+       feature rather than this one: the Rune Knight's Great Stature says the extra damage
+       from Giant's Might increases to 1d8, and Runic Juggernaut to 1d10. So the character's
+       features are searched for an upgrade naming this effect. They are already filtered to
+       the levels reached, which gates the upgrade for free; a clause inside the effect's own
+       text carries its own level and is checked against it. */
+    if(m.dmgDice){
+      var esc_nm=String(name).replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+      var upRe=new RegExp("(?:your|the)\\s+"+esc_nm+"\\s+feature\\s+increases\\s+to\\s+(\\d+d\\d+)","i");
+      featuresAndTraits().forEach(function(f){
+        var um=upRe.exec(plainTags(entryText(f.entries||"")));
+        if(um)m.dmgDice=biggerDie(m.dmgDice,um[1]);
+      });
+      var selfRe=/increases? to (\d+d\d+) when you reach (\d+)(?:st|nd|rd|th) level/gi,sm;
+      while((sm=selfRe.exec(txt)))
+        if(state.level>=parseInt(sm[2],10))m.dmgDice=biggerDie(m.dmgDice,sm[1]);
+    }
     if((x=/bonus to (?:your )?AC equal to your (strength|dexterity|constitution|intelligence|wisdom|charisma) modifier/i.exec(txt)))m.acAbility=ABIL_WORD[x[1].toLowerCase()];
     else if((x=/\+(\d+) bonus to (?:your )?AC/i.exec(txt))||(x=/(?:your )?AC increases by (\d+)/i.exec(txt)))m.ac=parseInt(x[1],10);
     if((x=/(?:walking )?speed increases by (\d+) f/i.exec(txt)))m.speed=parseInt(x[1],10);
@@ -3336,6 +3510,9 @@
       // the die and Dex are already applied for a monk weapon, so suppress the reminder note
       notes=withCond(notes,{melee:melee,ranged:!melee,str:usesStr,finesse:finesse,monkWeapon:false});
       if(w.att==="optional"&&!it.attuned)notes=(notes?notes+" · ":"")+"not attuned — no magic bonus";
+      // a lowered critical range comes from the weapon itself or from something else worn
+      var critAt=Math.min(parseInt((itemInfo(it.name,it.source)||{}).critThreshold,10)||20,itemBonuses().crit);
+      if(critAt<20)notes=(notes?notes+" · ":"")+"crits on "+critAt+"–20";
       var sub=w.wtype==="R"?"Ranged Weapon":(monkW?"Monk Weapon":"Melee Weapon");
       rows+=row(w.name,sub,range,modStr(mod+prof+styleHit),dstr,notes,
                 "Equipped item"+(it.source?" — "+sourceName(it.source):""),itemEntriesFull(it));
@@ -3504,7 +3681,7 @@
     // LEFT
     var abilCells=ABILITIES.map(function(a){var t=totalScore(a);return '<div class="abil-cell"><div class="aname">'+ABIL_ABBR[a]+'</div><div class="amod">'+modStr(abMod(t))+'</div><div class="ascore">'+t+"</div></div>";}).join("");
     var sp=savingProfs();
-    var saveRows=ABILITIES.map(function(a){var m=abMod(totalScore(a))+(sp[a]?prof:0);return '<div class="line-row"><span class="dot'+(sp[a]?" on":"")+'"></span><span class="ab">'+ABIL_ABBR[a]+'</span><span>'+a+'</span><span class="lv">'+modStr(m)+"</span></div>";}).join("");
+    var saveRows=ABILITIES.map(function(a){var m=saveBonus(a);return '<div class="line-row"><span class="dot'+(sp[a]?" on":"")+'"></span><span class="ab">'+ABIL_ABBR[a]+'</span><span>'+a+'</span><span class="lv">'+modStr(m)+"</span></div>";}).join("");
     var senses=sensesList();
     var fd=state.fdata,pf=fd.proficiencies||{},langs=languagesAll();
     var langChips=(state.customLanguages||[]).map(function(l,i){return '<span class="lang-chip">'+esc(l)+' <span class="lang-x" data-i="'+i+'">&times;</span></span>';}).join("");
@@ -3601,7 +3778,7 @@
       if(!a||a.armorKind==="shield")return;
       if(wornBody)it.equipped=false;else wornBody=true;
     });
-    var invBody='<div class="res-sub" style="margin-bottom:8px">Attunement: <b>'+attunedCount()+' / 3</b></div>';
+    var invBody='<div class="res-sub" style="margin-bottom:8px">Attunement: <b>'+attunedCount()+' / 3</b></div>'+itemEffectsHtml();
     if(inv.length){
       invBody+=inv.map(function(it,i){
         var att=itemAttune(it);
@@ -3611,7 +3788,8 @@
         var qb=(it.qty>1?'<span class="qty-badge">&times;'+it.qty+"</span> ":"");
         var ctrl='<input type="number" min="1" class="sh-qty" data-i="'+i+'" title="Quantity" value="'+(it.qty||1)+'">';
         var ra=resolveArmor(it);
-        if(ra||it.cat==="Weapon"){var lbl=ra?(it.equipped?"Worn":"Wear"):(it.equipped?"Wielding":"Wield");ctrl+='<button class="equip-btn sh-equip'+(it.equipped?" on":"")+'" data-i="'+i+'">'+lbl+"</button>";}
+        var eqi=equipInfo(it);
+        if(eqi.ok)ctrl+='<button class="equip-btn sh-equip'+(it.equipped?" on":"")+'" data-i="'+i+'">'+eqi.verb+"</button>";
         if(att)ctrl+='<button class="equip-btn sh-attune'+(it.attuned?" on":"")+'" data-i="'+i+'" title="'+esc(attuneNote(att))+'">'+(it.attuned?"Attuned":"Attune")+"</button>";
         ctrl+='<button class="rm-btn sh-rm" data-i="'+i+'">&times;</button>';
         var desc=hasDesc?'<div class="inv-desc">'+full.map(renderEntry).join("")+"</div>":"";
@@ -4078,7 +4256,7 @@
     setT("XP",state.sheet.xp);setT("Inspiration",state.sheet.inspiration?"Yes":"");
     ABILITIES.forEach(function(a){var t=totalScore(a);setT(F.abilityFields[a],t);setT(F.abilityMods[a],modStr(abMod(t)));});
     var sp=savingProfs();
-    ABILITIES.forEach(function(a){setT(F.saveFields[a],modStr(abMod(totalScore(a))+(sp[a]?prof:0)));if(sp[a])check(F.saveChecks[a]);});
+    ABILITIES.forEach(function(a){setT(F.saveFields[a],modStr(saveBonus(a)));if(sp[a])check(F.saveChecks[a]);});
     var ps=proficientSkills();
     for(var sk in F.skillFields){setT(F.skillFields[sk],modStr(skillBonus(sk)));if(ps[sk])check(F.skillChecks[sk]);}
     setT("Passive",passiveScore("Perception"));
@@ -4154,7 +4332,7 @@
     for(i=0;i<6;i++){
       var pr=!!sp[AB[i]];
       T["st_"+KEYS[i]]=pr?"1":"0";
-      T["stv_"+KEYS[i]]=sign(abMod(totalScore(AB[i]))+(pr?prof:0));
+      T["stv_"+KEYS[i]]=sign(saveBonus(AB[i]));
     }
     var SK=[["a","Acrobatics"],["b","Animal Handling"],["c","Arcana"],["d","Athletics"],
             ["e","Deception"],["f","History"],["g","Insight"],["h","Intimidation"],

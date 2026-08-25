@@ -72,7 +72,8 @@ app=app.replace("populateLevels();showEdition();",
  "featureNamesList:featureNamesList,speedText:speedText,spellByName:spellByName,currentBg:currentBg,"+
  "attackRows:attackRows,attacksPerAction:attacksPerAction,spellByKey:spellByKey,ordinal:ordinal,"+
  "entryPlain:entryPlain,featureCards:featureCards,exportTags:exportTags,printSheetHtml:printSheetHtml,raceFeatGrant:raceFeatGrant,raceFeatOptions:raceFeatOptions,raceFeatPicks:raceFeatPicks,raceFeatPending:raceFeatPending,raceFeatHtml:raceFeatHtml,acFormulas:acFormulas,spellFilterPool:spellFilterPool,featSpellBlock:featSpellBlock,allChosenFeats:allChosenFeats,featPickSlots:featPickSlots,featPicks:featPicks,featPicksPending:featPicksPending,featPicksHtml:featPicksHtml,featGrantsAll:featGrantsAll,featResourceBonus:featResourceBonus,optFeatureList:optFeatureList,"+
- "itemMechanics:itemMechanics,skillAdvantage:skillAdvantage};");
+ "itemMechanics:itemMechanics,skillAdvantage:skillAdvantage,"+
+ "itemBonuses:itemBonuses,itemEffectsHtml:itemEffectsHtml,saveBonus:saveBonus,acInfo:acInfo,equipInfo:equipInfo,fxMods:fxMods};");
 eval(app);
 var C=window.__cc,S=C.state;
 
@@ -1605,6 +1606,76 @@ for(var s10=0;s10<allSk.length;s10++){
   var got=C.abMod(C.totalScore(C.SKILL_ABILITY[allSk[s10]]))+(p10[allSk[s10]]?C.profBonus():0);
   if(got!==want)fails.push("  wrong bonus for "+allSk[s10]);else pass++;
 }
+
+
+section("11. Worn gear changes the numbers");
+// a magic item does nothing until it is attuned, and everything once it is
+function gear(name,attune){
+  var src=null,L=window.CC_ITEMS;
+  for(var i=0;i<L.length;i++)if(L[i].name===name){src=L[i];break;}
+  if(!src){fails.push("  item not in the data: "+name);return null;}
+  var o={};for(var k in src)o[k]=src[k];
+  o.qty=1;o.equipped=true;o.attuned=!!attune;
+  S.equipment.inventory.push(o);
+  return o;
+}
+setup("fighter","Fighter",5);
+S.abilities={method:"assign",base:{},assign:{Strength:"16",Dexterity:"14",Constitution:"14",
+             Intelligence:"10",Wisdom:"12",Charisma:"8"},other:{},override:{},rolled:null};
+S.equipment.inventory.push({name:"Chain Mail",source:"PHB",cat:"Armor",ac:16,armorKind:"heavy",qty:1,equipped:true});
+check("  chain mail alone is AC 16",C.acInfo().total,16);
+var cloak=gear("Cloak of Protection",false);
+check("  unattuned Cloak of Protection changes nothing",C.acInfo().total,16);
+check("  ...and adds nothing to saves",C.saveBonus("Dexterity"),2);
+if(cloak)cloak.attuned=true;
+check("  attuned Cloak of Protection gives +1 AC",C.acInfo().total,17);
+check("  ...and +1 to every save",C.saveBonus("Dexterity"),3);
+gear("Ring of Protection",true);
+check("  a second +1 AC item stacks",C.acInfo().total,18);
+gear("Stone of Good Luck",true);
+check("  Stone of Good Luck reaches ability checks",C.skillBonus("Athletics"),4);   // Str +3, +1 stone
+gear("Ioun Stone, Mastery",true);
+check("  Ioun Stone of Mastery raises the proficiency bonus",C.profBonus(),4);
+gear("Belt of Hill Giant Strength",true);
+check("  Belt of Hill Giant Strength sets Strength to 21",C.totalScore("Strength"),21);
+gear("Boots of Speed",true);
+check("  Boots of Speed double the walking speed",C.speedInfo().total,60);
+checkTrue("  the effects are listed for the player",C.itemEffectsHtml().indexOf("Cloak of Protection")>=0);
+
+// a floor never lowers a score that is already higher
+setup("fighter","Fighter",5);
+S.abilities={method:"assign",base:{},assign:{Strength:"22",Dexterity:"14",Constitution:"14",
+             Intelligence:"10",Wisdom:"12",Charisma:"8"},other:{},override:{},rolled:null};
+gear("Belt of Hill Giant Strength",true);
+check("  a giant's belt never lowers a higher Strength",C.totalScore("Strength"),22);
+
+// magic armour is counted once: through the armour, not again as a loose bonus
+setup("fighter","Fighter",5);
+S.equipment.inventory.push({name:"+1 Chain Mail",source:"DMG",cat:"Armor",ac:16,armorKind:"heavy",
+                            bonusAc:"+1",qty:1,equipped:true});
+check("  magic armour counts its bonus once",C.acInfo().total,17);
+
+// what can be put on: wearables and held items, not consumables
+setup("fighter","Fighter",5);
+checkTrue("  a cloak can be worn",C.equipInfo({name:"Cloak of Protection",source:"DMG",cat:"Wondrous"}).ok);
+checkTrue("  a ring can be worn",C.equipInfo({name:"Ring of Protection",source:"DMG",cat:"Ring"}).ok);
+checkTrue("  a weapon can be wielded",C.equipInfo({name:"Longsword",source:"PHB",cat:"Weapon"}).ok);
+checkTrue("  a potion cannot be equipped",!C.equipInfo({name:"Potion of Healing",source:"DMG",cat:"Potion"}).ok);
+
+section("12. A damage die raised by a later feature");
+// Giant's Might says 1d6; the Rune Knight's Great Stature (10th) and Runic Juggernaut
+// (18th) raise it, and the clause lives in those features rather than in Giant's Might
+function giantsMight(){
+  var av=C.fxAvailable();
+  for(var i=0;i<av.length;i++)if(av[i].name==="Giant's Might")return av[i].mods.dmgDice||"";
+  return "(not found)";
+}
+setup("fighter-classic","Fighter",3);S.subclassName="Rune Knight";
+check("  Giant's Might is 1d6 at 3rd level",giantsMight(),"1d6");
+setup("fighter-classic","Fighter",10);S.subclassName="Rune Knight";
+check("  Great Stature raises it to 1d8 at 10th",giantsMight(),"1d8");
+setup("fighter-classic","Fighter",18);S.subclassName="Rune Knight";
+check("  Runic Juggernaut raises it to 1d10 at 18th",giantsMight(),"1d10");
 
 // =====================================================================
 WScript.Echo("");
