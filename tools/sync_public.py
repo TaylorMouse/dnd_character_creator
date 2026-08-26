@@ -30,7 +30,9 @@ FILES = ["index.html", "README.md", "LICENSE", ".gitignore",
          os.path.join("resources", "dnd-spells.png"),
          os.path.join("resources", "dnd-creatures.png"),
          os.path.join("resources", "dnd-feats.png"),
-         os.path.join("resources", "dnd-items.png")]
+         os.path.join("resources", "dnd-items.png"),
+         # the screenshot the README shows, which is our own interface
+         os.path.join("docs", "screenshot-home.png")]
 DIRS  = ["css", "js", "tools"]
 
 def copy_file(rel):

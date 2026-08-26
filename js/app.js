@@ -4683,7 +4683,23 @@
   $("collapseAll").addEventListener("click",function(){Array.prototype.forEach.call($("featureList").querySelectorAll(".feature"),function(f){f.classList.add("collapsed");});});
 
   // wizard step navigation
-  $("menuBtn").addEventListener("click",function(){$("stepsMenu").classList.toggle("open");});
+  /* Now that the menu floats over the page it has to be dismissable without picking a
+     step, so clicking away from it or pressing Escape closes it. */
+  $("menuBtn").addEventListener("click",function(e){
+    e.stopPropagation();
+    $("stepsMenu").classList.toggle("open");
+  });
+  document.addEventListener("click",function(e){
+    var m=$("stepsMenu");
+    if(!m||!m.classList.contains("open"))return;
+    if(m.contains(e.target)||e.target===$("menuBtn"))return;   // inside the menu, or the button itself
+    m.classList.remove("open");
+  });
+  document.addEventListener("keydown",function(e){
+    if(e.key!=="Escape")return;
+    var m=$("stepsMenu");
+    if(m)m.classList.remove("open");
+  });
   $("saveBtn").addEventListener("click",function(){saveChar();});
   $("darkToggle").addEventListener("click",function(){state.sheet.dark=!state.sheet.dark;document.body.classList.toggle("dark",state.sheet.dark);this.innerHTML=state.sheet.dark?ICON.sun:ICON.moon;});
   Array.prototype.forEach.call(document.querySelectorAll(".step"),function(b){b.addEventListener("click",function(){setStep(b.getAttribute("data-step"));});});

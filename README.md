@@ -4,6 +4,8 @@ A fully offline, data-driven **Dungeons & Dragons 5e character builder and sheet
 single-page app in plain HTML/CSS/JavaScript. No build step, no server, no internet required —
 just open `index.html` in a browser (Chrome/Edge recommended).
 
+![The opening screen: choose a rules edition, load a saved character, or browse the rules reference pages](docs/screenshot-home.png)
+
 ## Features
 
 - **Guided wizard:** Edition → Class & Features → Background & Details → Species → Ability Scores →

@@ -27,7 +27,9 @@ var _shared=new El();_shared.parentNode=_shared;
 var _els={};
 var document={getElementById:function(id){if(!_els[id])_els[id]=new El();return _els[id];},
   querySelector:function(){return new El();},querySelectorAll:function(){return [];},
-  createElement:function(){return new El();},head:_shared,body:_shared};
+  createElement:function(){return new El();},head:_shared,body:_shared,
+  // the app listens on the document for dismissing the step menu
+  addEventListener:function(){},removeEventListener:function(){}};
 var window={scrollTo:function(){}};
 
 // ---------- file helpers ----------
