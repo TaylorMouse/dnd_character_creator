@@ -20,3 +20,10 @@ homebrew/
 
 # working copies of saved characters and their portraits, gathered here for convenience
 Characters/
+
+# credentials for the upload hook. Never committed, never packaged: a token in the
+# public mirror or in the zip handed to other players would be a token given away.
+dropbox.*
+*.accesstoken
+*.refreshtoken
+*.verifier

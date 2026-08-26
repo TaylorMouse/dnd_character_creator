@@ -60,6 +60,25 @@ table.sp-table tbody tr.sel{background:rgba(200,16,46,.12)}
 .cr-abil i{display:block;font-size:11.5px;color:var(--muted);font-style:normal}
 .sp-sec-h{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--accent2);margin:14px 0 7px;padding-bottom:3px;border-bottom:1px solid var(--line)}
 .cr-blk{margin:0 0 9px}
+/* the lore behind the creature: prose rather than rules, so it reads wider and looser */
+.cr-lore{font-size:13.5px;line-height:1.55}
+.cr-lore p{margin:0 0 9px}
+.cr-lore .sub-h{display:block;font-weight:800;color:var(--accent2);
+  font-size:12.5px;text-transform:uppercase;letter-spacing:.03em;margin:12px 0 2px}
+.cr-lore ul{margin:0 0 9px;padding-left:18px}
+.cr-lore table{width:100%;border-collapse:collapse;margin:0 0 9px}
+.cr-lore th,.cr-lore td{border:1px solid var(--line);padding:3px 6px;text-align:left}
+/* the book and page, set against the creature's name */
+.sp-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.sp-head h2{margin:0}
+.sp-ref{flex:none;font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--muted)}
+/* a qualifier that applies to a whole section rather than one entry */
+.cr-note{font-size:12.5px;font-style:italic;color:var(--muted);margin:4px 0 6px}
+/* sidebars and optional rules printed alongside the creature */
+.cr-inset{border-left:3px solid var(--accent);background:rgba(0,0,0,.03);
+  padding:7px 10px;margin:6px 0 9px;border-radius:0 5px 5px 0}
+.cr-inset-h{font-weight:700;color:var(--accent2);margin-bottom:3px}
+.cr-inset p:last-child{margin-bottom:0}
 .cr-blk .nm{font-weight:700;font-style:italic}
 .cr-blk p{margin:0 0 5px}
 .cr-blk ul{margin:0 0 5px;padding-left:18px}
@@ -146,12 +165,65 @@ table.sp-table tbody tr.sel{background:rgba(200,16,46,.12)}
   var LIST=(window.CC_CREATURES||[]).slice();
   var SOURCES=window.CC_SOURCES||{};
   var HB_NAMES={GriffonsSaddlebag2:"The Griffon's Saddlebag, Book 2"};
+  // spell levels read "1st", "2nd", "3rd" - not "1th"
+  function ordinal(n){
+    n=parseInt(n,10);
+    var rest=n%100;
+    if(rest>=11&&rest<=13)return n+"th";
+    return n+({1:"st",2:"nd",3:"rd"}[n%10]||"th");
+  }
+  // What to call this creature in prose: its own short name, the first name of a named
+  // character, or "The <creature>" for anything generic.
+  function creatureSubject(m){
+    if(m.shortName)return m.shortName;
+    if(m.named)return String(m.name).split(" ")[0];
+    return "The "+String(m.name).toLowerCase();
+  }
+  function legendaryIntro(m){
+    var who=creatureSubject(m),n=(m.legendaryActions==null?3:m.legendaryActions);
+    return who+" can take "+n+" legendary action"+(n===1?"":"s")+
+      ", choosing from the options below. Only one legendary action can be used at a time "+
+      "and only at the end of another creature's turn. "+who+
+      " regains spent legendary actions at the start of their turn.";
+  }
+
   function srcName(c){return SOURCES[c]||HB_NAMES[c]||c;}
   var $=function(id){return document.getElementById(id);};
 
   // ---------- text helpers (same renderer the other reference pages use) ----------
   function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
   function lastSeg(p){for(var i=p.length-1;i>=0;i--)if(p[i]!=="")return p[i];return p[0];}
+  var ABIL_FULL={str:"Strength",dex:"Dexterity",con:"Constitution",
+                 int:"Intelligence",wis:"Wisdom",cha:"Charisma"};
+  var ORDINALS=["","First","Second","Third","Fourth","Fifth","Sixth","Seventh","Eighth","Ninth","Tenth"];
+  function ordinalWord(n){return ORDINALS[parseInt(n,10)]||String(n);}
+  /* "mw" -> "Melee Weapon Attack:", "mw,rw" -> "Melee or Ranged Weapon Attack:".
+     Each comma-separated group is a set of letters; a letter already used by a later
+     group is dropped from the earlier one, which is what turns "mw,rw" into
+     "Melee or Ranged Weapon" rather than "Melee Weapon or Ranged Weapon". */
+  function attackLine(codes,isRoll){
+    var groups=String(codes||"").toLowerCase().split(",");
+    var kept=[],seen={},i,j,g,out;
+    for(i=0;i<groups.length;i++)kept.push(groups[i].replace(/\s+/g,"").split(""));
+    for(i=kept.length-1;i>=0;i--){
+      g=[];
+      for(j=0;j<kept[i].length;j++){
+        if(i===kept.length-1||!seen[kept[i][j]])g.push(kept[i][j]);
+        seen[kept[i][j]]=1;
+      }
+      kept[i]=g;
+    }
+    out=[];
+    for(i=0;i<kept.length;i++){
+      var s=kept[i].join(""),range="",means="";
+      if(s.indexOf("m")>=0)range="Melee ";else if(s.indexOf("r")>=0)range="Ranged ";
+      else if(s.indexOf("g")>=0)range="Magical ";else if(s.indexOf("a")>=0)range="Area ";
+      if(s.indexOf("w")>=0)means="Weapon ";else if(s.indexOf("s")>=0)means="Spell ";
+      else if(s.indexOf("p")>=0)means="Power ";
+      out.push(range+means);
+    }
+    return out.join("or ")+"Attack"+(isRoll?" Roll":"")+":";
+  }
   function tagHtml(tag,content){
     var p=content.split("|"),txt;
     switch(tag){
@@ -164,14 +236,37 @@ table.sp-table tbody tr.sel{background:rgba(200,16,46,.12)}
       case"dc":return'<span class="tag-roll">DC '+p[0]+"</span>";
       case"damage":return'<span class="tag-dmg">'+((p[1]&&p[1]!=="")?p[1]:p[0])+"</span>";
       case"scaledamage":return'<span class="tag-dmg">'+lastSeg(p)+"</span>";
-      case"dice":case"d20":case"hit":return'<span class="tag-roll">'+((p[1]&&p[1]!=="")?p[1]:p[0])+"</span>";
+      case"dice":case"d20":return'<span class="tag-roll">'+((p[1]&&p[1]!=="")?p[1]:p[0])+"</span>";
+      // an attack bonus is written as a signed number: {@hit 5} is "+5"
+      case"hit":
+        var hv=(p[1]&&p[1]!=="")?p[1]:p[0];
+        if(!isNaN(parseFloat(hv))&&!/^[-+]/.test(String(hv).replace(/^\s+/,"")))hv="+"+hv;
+        return'<span class="tag-roll">'+hv+"</span>";
+      case"skillCheck":
+        var sp2=String(p[0]).split(/\s+/),sn=sp2[1];
+        return'<span class="tag-roll">'+((sn!=null&&!isNaN(parseFloat(sn))&&sn>=0)?"+"+sn:(sn||p[0]))+"</span>";
       case"scaledice":return'<span class="tag-roll">'+lastSeg(p)+"</span>";
-      case"chance":return'<span class="tag-roll">'+p[0]+" percent</span>";
-      case"recharge":return"(Recharge "+(p[0]||"6")+")";
-      case"atk":
-        var m={"mw":"Melee Weapon Attack:","rw":"Ranged Weapon Attack:","mw,rw":"Melee or Ranged Weapon Attack:",
-               "ms":"Melee Spell Attack:","rs":"Ranged Spell Attack:","ms,rs":"Melee or Ranged Spell Attack:"};
-        return "<em>"+(m[p[0]]||"Attack:")+"</em> ";
+      case"chance":return'<span class="tag-roll">'+((p[1]&&p[1]!=="")?p[1]:p[0]+" percent")+"</span>";
+      // a recharge is a range up to six: {@recharge 5} is "(Recharge 5-6)"
+      case"recharge":
+        var rn=parseInt(p[0]||"6",10)||6;
+        return"(Recharge "+rn+(rn<6?"–6":"")+")";
+      /* Attack lines are built from letter codes rather than listed: m/r/g/a give the
+         range and w/s/p the means, so "mw" is a melee weapon attack and "mw,rw" a melee
+         or ranged one. The 2024 books use @atkr, which says "Attack Roll" instead. */
+      case"atk":case"atkr":return "<em>"+attackLine(p[0],tag==="atkr")+"</em> ";
+      /* The 2024 action format spells out the saving throw and what each outcome means,
+         as separate tags with no content of their own. */
+      case"actSave":return "<em>"+esc(ABIL_FULL[String(p[0]).toLowerCase()]||p[0])+" Saving Throw:</em>";
+      case"actSaveSuccess":return "<em>Success:</em>";
+      case"actSaveFail":return "<em>"+(p[0]?ordinalWord(p[0])+" Failure:":"Failure:")+"</em>";
+      case"actSaveFailBy":return "<em>Failure by "+esc(p[0])+" or More:</em>";
+      case"actSaveSuccessOrFail":return "<em>Failure or Success:</em>";
+      case"actTrigger":return "<em>Trigger:</em>";
+      case"actResponse":return "<em>Response"+(String(p[0]).indexOf("d")>=0?"—":":")+"</em>";
+      case"m":return "<strong>Miss:</strong> ";
+      case"hom":return "<strong>Hit or Miss:</strong> ";
+      case"dcYourSpellSave":return '<span class="tag-roll">your spell save DC</span>';
       case"filter":case"book":case"quickref":case"adventure":case"footnote":case"area":
         return '<span class="tag-link">'+p[0]+"</span>";
       default:
@@ -209,6 +304,16 @@ table.sp-table tbody tr.sel{background:rgba(200,16,46,.12)}
       return "<table>"+(head?"<thead><tr>"+head+"</tr></thead>":"")+"<tbody>"+rows+"</tbody></table>";
     }
     if(t==="quote")return "<p><em>"+(e.entries||[]).map(renderInline).join(" ")+"</em></p>";
+    /* Sidebars and optional rules. Without these the text inside them was reaching
+       renderInline as an object and coming out as nothing at all. */
+    if(t==="inset"||t==="insetReadaloud"||t==="variant"||t==="variantInner"||t==="variantSub"){
+      return '<div class="cr-inset">'+(e.name?'<div class="cr-inset-h">'+renderTags(e.name)+"</div>":"")+
+        (e.entries||[]).map(renderEntry).join("")+"</div>";
+    }
+    if(t==="itemSub"||t==="itemSpell"){
+      var sn=e.name?"<i>"+renderTags(e.name)+"</i> ":"";
+      return "<p>"+sn+([].concat(e.entries||e.entry||[]).map(renderInline).join(" "))+"</p>";
+    }
     return "<p>"+renderInline(e)+"</p>";
   }
 
@@ -301,6 +406,21 @@ table.sp-table tbody tr.sel{background:rgba(200,16,46,.12)}
     sc.onerror=function(){cb(null);};
     document.head.appendChild(sc);
   }
+  /* The lore is bulkier than the stat blocks and most of a session never asks for it,
+     so it is fetched per book only when a creature is opened, and appended once it
+     arrives - the stat block does not wait for it. */
+  function loadLore(s,cb){
+    window.CC_CREATURE_LORE=window.CC_CREATURE_LORE||{};
+    if(window.CC_CREATURE_LORE[s])return cb(window.CC_CREATURE_LORE[s]);
+    if(loadLore._tried[s])return cb(null);
+    loadLore._tried[s]=1;
+    var sc=document.createElement("script");
+    sc.src="resources/creatures/lore-"+srcFile(s)+".js";
+    sc.onload=function(){cb(window.CC_CREATURE_LORE[s]);};
+    sc.onerror=function(){cb(null);};   // a book with no lore has no file
+    document.head.appendChild(sc);
+  }
+  loadLore._tried={};
   function select(id){
     st.sel=id;
     Array.prototype.forEach.call($("spBody").querySelectorAll(".sprow"),function(tr){tr.classList.toggle("sel",tr.getAttribute("data-id")===id);});
@@ -310,10 +430,47 @@ table.sp-table tbody tr.sel{background:rgba(200,16,46,.12)}
     loadSource(src,function(block){
       if(st.sel!==id)return;
       renderDetail(block?block[nm]:null,nm,src);
+      loadLore(src,function(bag){
+        if(st.sel!==id)return;                 // moved on while it was loading
+        showLore(bag?bag[nm]:null);
+      });
     });
   }
 
   function mod(n){var m=Math.floor(((n||10)-10)/2);return (m>=0?"+":"")+m;}
+  /* A spell in one of these lists is usually a string, but may be an object carrying the
+     text and a flag marking it as not for display. */
+  function spellNames(list){
+    var out=[],i,it;
+    for(i=0;i<(list||[]).length;i++){
+      it=list[i];
+      if(it==null)continue;
+      if(typeof it==="string"){out.push(it);continue;}
+      if(it.hidden)continue;
+      if(it.entry)out.push(it.entry);
+    }
+    return out;
+  }
+  /* Skills are a plain map, except for "other", which offers a choice between several -
+     the oblex is proficient in one of Arcana, History, Nature or Religion. */
+  function skillLine(o){
+    if(!o)return "";
+    var out=[],k,extra=[];
+    for(k in o){
+      if(k==="other")continue;
+      out.push(capWords(k)+" "+o[k]);
+    }
+    (o.other||[]).forEach(function(x){
+      if(!x||!x.oneOf)return;
+      var opts=[],sk;
+      for(sk in x.oneOf)opts.push(capWords(sk)+" "+x.oneOf[sk]);
+      if(opts.length)extra.push("plus one of the following: "+joinOr(opts));
+    });
+    return out.concat(extra).join(", ");
+  }
+  function capWords(s){
+    return String(s).replace(/(^|[\s-])([a-z])/g,function(_,a,b){return a+b.toUpperCase();});
+  }
   function joinMap(o,fmt){
     if(!o)return "";
     var out=[],k;
@@ -328,12 +485,51 @@ table.sp-table tbody tr.sel{background:rgba(200,16,46,.12)}
       return inner.join(", ")+(x.note?" "+x.note:"");
     }).filter(Boolean).join("; ");
   }
-  function blocks(title,arr){
+  /* A section can carry an introduction before its entries and a qualifier after them:
+     the homunculus's actions need its master's bonus action, and Charmayne's reactions
+     come with a limit on how many she may take. */
+  function blocks(title,arr,header,note){
     if(!arr||!arr.length)return "";
-    return '<div class="sp-sec-h">'+esc(title)+"</div>"+arr.map(function(t){
+    var h='<div class="sp-sec-h">'+esc(title)+"</div>";
+    if(header&&header.length)h+=header.map(renderEntry).join("");
+    h+=arr.map(function(t){
       return '<div class="cr-blk">'+(t.name?'<span class="nm">'+renderTags(t.name)+".</span> ":"")+
         (t.entries||[]).map(renderEntry).join("")+"</div>";
     }).join("");
+    if(note)h+='<p class="cr-note">'+renderTags(note)+"</p>";
+    return h;
+  }
+  // the experience a rating is worth, for the lair and coven ratings that give only a number
+  var CR_XP={"0":10,"1/8":25,"1/4":50,"1/2":100,"1":200,"2":450,"3":700,"4":1100,"5":1800,
+    "6":2300,"7":2900,"8":3900,"9":5000,"10":5900,"11":7200,"12":8400,"13":10000,"14":11500,
+    "15":13000,"16":15000,"17":18000,"18":20000,"19":22000,"20":25000,"21":33000,"22":41000,
+    "23":50000,"24":62000,"25":75000,"26":90000,"27":105000,"28":120000,"29":135000,"30":155000};
+  function crXp(cr){var v=CR_XP[String(cr).trim()];return v==null?String(cr):commas(v);}
+  function joinOr(list){
+    if(list.length<2)return list.join("");
+    return list.slice(0,-1).join(", ")+", or "+list[list.length-1];
+  }
+  // "1/8" and "1/4" are ratings, "13,000" is a count of experience
+  function commas(n){
+    var s=String(n),out="",i;
+    for(i=0;i<s.length;i++)out+=((i>0&&(s.length-i)%3===0)?",":"")+s.charAt(i);
+    return out;
+  }
+  function showLore(entries){
+    var el=document.getElementById("spLore");
+    if(!el||!entries||!entries.length)return;
+    el.innerHTML='<div class="sp-sec-h">Lore</div><div class="cr-lore">'+
+      entries.map(renderEntry).join("")+"</div>";
+  }
+  // lair actions and the like arrive as a bare list of entries rather than named blocks
+  function wrapEntries(arr){
+    return (arr&&arr.length)?[{entries:arr}]:null;
+  }
+  // gear is recorded as an item reference, sometimes with a count
+  function gearName(g){
+    if(typeof g==="string")return "{@item "+g+"}";
+    var n="{@item "+(g.item||"")+"}";
+    return g.quantity?n+" ("+g.quantity+")":n;
   }
   function renderDetail(m,nm,src){
     if(!m){
@@ -341,10 +537,23 @@ table.sp-table tbody tr.sel{background:rgba(200,16,46,.12)}
         ") could not be loaded.<br>Open this page from the app folder so <code>resources/creatures/</code> is reachable.</div>";
       return;
     }
-    var h="<h2>"+esc(m.name)+(m.hb?' <span class="sp-badge hb">HOMEBREW</span>':"")+"</h2>";
-    h+='<div class="sp-sub2">'+esc([m.size,m.type].filter(Boolean).join(" ")+(m.align?", "+m.align:""))+"</div>";
+    var h='<div class="sp-head"><h2>'+esc(m.name)+(m.hb?' <span class="sp-badge hb">HOMEBREW</span>':"")+"</h2>"+
+      '<span class="sp-ref">'+esc(m.source)+(m.page?" p"+m.page:"")+"</span></div>";
+    // "Medium humanoid (elf)", with the qualifiers that belong to each part
+    var sizeTxt=(m.size||"")+(m.sizeNote?" "+m.sizeNote:"");
+    var alignTxt=(m.alignPrefix||"")+(m.align||"");
+    h+='<div class="sp-sub2">'+esc([sizeTxt,m.type].filter(Boolean).join(" ")+
+      (alignTxt?", "+alignTxt:""))+"</div>";
     h+='<div class="cr-rule"></div>';
     if(m.ac)h+='<p class="cr-line"><b>Armor Class</b> '+renderTags(m.ac)+"</p>";
+    /* 2024 stat blocks give initiative as a bonus and the passive score it implies:
+       Dexterity, plus proficiency where the creature has it. */
+    if(m.initiative&&m.abil){
+      var dexM=Math.floor(((m.abil.dex||10)-10)/2),
+          prof=(m.initiative.proficiency||0)*(parseInt(m.pb,10)||0),
+          ini=dexM+prof;
+      h+='<p class="cr-line"><b>Initiative</b> '+esc((ini>=0?"+":"")+ini+" ("+(10+ini)+")")+"</p>";
+    }
     if(m.hp)h+='<p class="cr-line"><b>Hit Points</b> '+renderTags(m.hp)+"</p>";
     if(m.speed)h+='<p class="cr-line"><b>Speed</b> '+renderTags(m.speed)+"</p>";
     h+='<div class="cr-abil">'+["str","dex","con","int","wis","cha"].map(function(k){
@@ -353,7 +562,7 @@ table.sp-table tbody tr.sel{background:rgba(200,16,46,.12)}
     }).join("")+"</div>";
     h+='<div class="cr-rule"></div>';
     if(m.save)h+='<p class="cr-line"><b>Saving Throws</b> '+esc(joinMap(m.save,function(k,v){return k.toUpperCase()+" "+v;}))+"</p>";
-    if(m.skill)h+='<p class="cr-line"><b>Skills</b> '+esc(joinMap(m.skill,function(k,v){return k.charAt(0).toUpperCase()+k.slice(1)+" "+v;}))+"</p>";
+    if(m.skill)h+='<p class="cr-line"><b>Skills</b> '+esc(skillLine(m.skill))+"</p>";
     var res=dmgList(m.resist),imm=dmgList(m.immune),vul=dmgList(m.vulnerable),ci=dmgList(m.conditionImmune);
     if(vul)h+='<p class="cr-line"><b>Damage Vulnerabilities</b> '+renderTags(vul)+"</p>";
     if(res)h+='<p class="cr-line"><b>Damage Resistances</b> '+renderTags(res)+"</p>";
@@ -363,43 +572,119 @@ table.sp-table tbody tr.sel{background:rgba(200,16,46,.12)}
     if(m.passive!=null)sen.push("passive Perception "+m.passive);
     if(sen.length)h+='<p class="cr-line"><b>Senses</b> '+renderTags(sen.join(", "))+"</p>";
     h+='<p class="cr-line"><b>Languages</b> '+((m.languages&&m.languages.length)?renderTags(m.languages.join(", ")):"—")+"</p>";
-    if(m.cr)h+='<p class="cr-line"><b>Challenge</b> '+renderTags(m.cr)+"</p>";
+    if(m.gear&&m.gear.length)h+='<p class="cr-line"><b>Gear</b> '+renderTags(m.gear.map(gearName).join(", "))+"</p>";
+    /* The two editions write this line differently. 2014 gives the rating, then the
+       experience in brackets, with the lair and coven ratings as alternatives, and puts
+       the proficiency bonus on a line of its own. 2024 calls it CR and gathers the
+       experience and the proficiency bonus into one bracket. */
+    var pbTxt=(m.pb==null||m.pb==="")?"":(isNaN(parseInt(m.pb,10))?String(m.pb):"+"+m.pb);
+    if(m.cr){
+      if(m.ed==="2024"){
+        var xps=[];
+        if(m.xp!=null)xps.push(commas(m.xp));
+        if(m.xpLair!=null||m.crLair)xps.push((m.xpLair!=null?commas(m.xpLair):crXp(m.crLair))+" in lair");
+        if(m.xpCoven!=null||m.crCoven)xps.push((m.xpCoven!=null?commas(m.xpCoven):crXp(m.crCoven))+" when part of a coven");
+        var inner=[];
+        if(xps.length)inner.push("XP "+joinOr(xps));
+        if(pbTxt)inner.push("PB "+pbTxt);
+        h+='<p class="cr-line"><b>CR</b> '+renderTags(m.cr)+(inner.length?" ("+esc(inner.join("; "))+")":"")+"</p>";
+      }else{
+        // a lair or coven rating is usually given without its experience, which is then
+        // the experience that rating is worth
+        function alt(cr,xp,tail){
+          var c=cr||m.cr,x=(xp!=null)?commas(xp):crXp(c);
+          return esc(c)+(x?" ("+x+" XP)":"")+tail;
+        }
+        var alts=[renderTags(m.cr)+(m.xp!=null?" ("+commas(m.xp)+" XP)":"")];
+        if(m.crLair||m.xpLair!=null)alts.push(alt(m.crLair,m.xpLair," when encountered in lair"));
+        if(m.crCoven||m.xpCoven!=null)alts.push(alt(m.crCoven,m.xpCoven," when part of a coven"));
+        h+='<p class="cr-line"><b>Challenge</b> '+alts.join(" or ")+"</p>";
+        if(pbTxt)h+='<p class="cr-line"><b>Proficiency Bonus</b> '+esc(pbTxt)+"</p>";
+      }
+    }else if(pbTxt)h+='<p class="cr-line"><b>Proficiency Bonus</b> '+esc(pbTxt)+"</p>";
     if(m.environment&&m.environment.length)h+='<p class="cr-line"><b>Environment</b> '+esc(m.environment.join(", "))+"</p>";
+    if(m.treasure&&m.treasure.length)h+='<p class="cr-line"><b>Treasure</b> '+esc(m.treasure.join(", "))+"</p>";
+    // where the creature comes from, when it is not simply encountered
+    if(m.summonSpell)h+='<p class="cr-note">Summoned by the spell '+renderTags("{@spell "+m.summonSpell+"}")+
+      (m.summonLevel?", cast at level "+esc(m.summonLevel)+" or higher":"")+".</p>";
+    if(m.summonClass)h+='<p class="cr-note">Summoned by a '+renderTags("{@class "+m.summonClass+"}")+".</p>";
+    if(m.level!=null)h+='<p class="cr-note">A sidekick of level '+esc(m.level)+".</p>";
+    if(m.familiar)h+='<p class="cr-note">Can serve as a familiar.</p>';
     h+='<div class="cr-rule"></div>';
     h+=blocks("Traits",m.trait);
     if(m.spellcasting&&m.spellcasting.length){
       h+='<div class="sp-sec-h">Spellcasting</div>'+m.spellcasting.map(function(sc){
         var s='<div class="cr-blk">'+(sc.name?'<span class="nm">'+renderTags(sc.name)+".</span> ":"");
         s+=(sc.headerEntries||[]).map(renderEntry).join("");
+        /* Two shapes live under these keys. Levelled slots are objects, {spells:[...],
+           slots:n}, while the per-day groups are plain arrays of spells. Reading .spells
+           off an array quietly yields nothing, which is how every "1/day each" line came
+           to render its label with no spells behind it. */
         function lvl(o,label){
           if(!o)return "";
           var out=[],k;
           for(k in o){
-            var e=o[k],names=(e.spells||[]);
+            var e=o[k],names=(e&&e.spells)?e.spells:(Object.prototype.toString.call(e)==="[object Array]"?e:[]);
+            names=spellNames(names);
+            if(!names.length)continue;
             out.push("<p>"+esc(label?label(k,e):k)+": "+renderTags(names.join(", "))+"</p>");
           }
           return out.join("");
         }
-        if(sc.will)s+="<p>At will: "+renderTags((sc.will||[]).join(", "))+"</p>";
-        s+=lvl(sc.daily,function(k){return k.replace("e"," each")+"/day";});
-        s+=lvl(sc.spells,function(k,e){return (k==="0"?"Cantrips":k+"th level")+(e.slots?" ("+e.slots+" slots)":"");});
+        /* "1e" is one of each per period rather than one in total, so it reads
+           "1/day each" - the count, then the period, then the qualifier. */
+        function per(unit){
+          return function(k){
+            var each=/e$/.test(k);
+            return (each?k.slice(0,-1):k)+"/"+unit+(each?" each":"");
+          };
+        }
+        var scHide={};
+        if(sc.hidden&&sc.hidden.length)for(var hi=0;hi<sc.hidden.length;hi++)scHide[sc.hidden[hi]]=1;
+        function group(key,label,o){
+          if(scHide[key]||!o)return "";
+          var names=spellNames(o);
+          return names.length?("<p>"+label+": "+renderTags(names.join(", "))+"</p>"):"";
+        }
+        s+=group("constant","Constant",sc.constant);
+        s+=group("will","At will",sc.will);
+        if(!scHide.daily)s+=lvl(sc.daily,per("day"));
+        if(!scHide.rest)s+=lvl(sc.rest,per("rest"));
+        if(!scHide.weekly)s+=lvl(sc.weekly,per("week"));
+        if(!scHide.monthly)s+=lvl(sc.monthly,per("month"));
+        if(!scHide.yearly)s+=lvl(sc.yearly,per("year"));
+        s+=group("ritual","Rituals",sc.ritual);
+        s+=lvl(sc.spells,function(k,e){return (k==="0"?"Cantrips":ordinal(k)+" level")+(e.slots?" ("+e.slots+" slots)":"");});
         s+=(sc.footerEntries||[]).map(renderEntry).join("");
         return s+"</div>";
       }).join("");
     }
-    h+=blocks("Actions",m.action);
-    h+=blocks("Bonus Actions",m.bonus);
-    h+=blocks("Reactions",m.reaction);
+    h+=blocks("Actions",m.action,m.actionHeader,m.actionNote);
+    h+=blocks("Bonus Actions",m.bonus,m.bonusHeader);
+    h+=blocks("Reactions",m.reaction,m.reactionHeader,m.reactionNote);
     if(m.legendary&&m.legendary.length){
       h+='<div class="sp-sec-h">Legendary Actions</div>';
-      h+=(m.legendaryHeader||[]).map(renderEntry).join("");
+      /* Only a handful of creatures spell this paragraph out; for the rest it is worked
+         out from the creature itself. Three actions unless stated otherwise, and a named
+         creature is called by its first name where anything else is "The <creature>". */
+      h+=(m.legendaryHeader&&m.legendaryHeader.length)
+        ? m.legendaryHeader.map(renderEntry).join("")
+        : "<p>"+esc(legendaryIntro(m))+"</p>";
       h+=m.legendary.map(function(t){
         return '<div class="cr-blk">'+(t.name?'<span class="nm">'+renderTags(t.name)+".</span> ":"")+(t.entries||[]).map(renderEntry).join("")+"</div>";
       }).join("");
     }
-    h+=blocks("Mythic Actions",m.mythic);
+    h+=blocks("Mythic Actions",m.mythic,m.mythicHeader);
+    /* Lair actions and regional effects are shared between the creatures that use them,
+       so they are kept in their own file and pulled in by name. They belong with the
+       stat block: without them a legendary creature's lair does nothing. */
+    h+=blocks("Mythic Encounter",wrapEntries(m.mythicEnc));
+    h+=blocks("Lair Actions",wrapEntries(m.lair));
+    h+=blocks("Regional Effects",wrapEntries(m.regional));
+    h+=blocks("Variants",m.variant);
     var book=(srcName(m.source)!==m.source)?(esc(m.source)+" — "+esc(srcName(m.source))):esc(m.source);
     h+='<p class="sp-src" style="margin-top:14px">Source: '+book+"</p>";
+    h+='<div id="spLore"></div>';
     $("spDetailInner").innerHTML=h;
     $("spDetail").scrollTop=0;
   }
