@@ -139,6 +139,10 @@ textarea{resize:vertical}
 .hamburger{background:#fff;border:1px solid var(--line2);border-radius:8px;padding:6px 12px;font-size:20px;line-height:1;font-weight:800;color:var(--ink);cursor:pointer}
 .hamburger:hover{border-color:var(--accent)}
 .menu-sep{height:1px;background:var(--line);margin:8px 2px}
+/* the sidekick's hit-die chooser, kept on the same line as the source tag */
+#skHd{display:inline-block;margin-left:6px;padding:1px 5px;font-size:12px;
+  border:1px solid var(--line2);border-radius:6px;background:#fff;color:var(--ink)}
+body.dark #skHd{background:#2a2a2a;border-color:#4a4a4a;color:#e8e8e8}
 /* The step menu floats over the page rather than sitting in the flow, so opening it does
    not shove everything below it downward. Absolute with no offsets keeps it exactly where
    it already appeared - its static position, just under the hamburger - while taking it

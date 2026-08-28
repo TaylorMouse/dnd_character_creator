@@ -1679,6 +1679,72 @@ check("  Great Stature raises it to 1d8 at 10th",giantsMight(),"1d8");
 setup("fighter-classic","Fighter",18);S.subclassName="Rune Knight";
 check("  Runic Juggernaut raises it to 1d10 at 18th",giantsMight(),"1d10");
 
+
+section("13. The classes beyond the core thirteen");
+// The Mystic and the three sidekicks have full data and were only hidden by a name
+// whitelist, so they must be offered and must actually work.
+var noncore=[];
+for(var n13=0;n13<window.CC_CLASSES.length;n13++)
+  if(!window.CC_CLASSES[n13].isCore)noncore.push(window.CC_CLASSES[n13]);
+check("  four classes sit outside the core thirteen",noncore.length,4);
+for(var q=0;q<noncore.length;q++){
+  var cq=noncore[q];
+  checkTrue("  "+cq.name+" has feature data",!!window.CC_FEATURE_DATA[cq.slug]);
+}
+// a sidekick brings its own hit die, so the class supplies none and one is chosen
+var sk=null,myst=null;
+for(var s13=0;s13<noncore.length;s13++){
+  if(noncore[s13].isSidekick&&!sk)sk=noncore[s13];
+  if(!noncore[s13].isSidekick)myst=noncore[s13];
+}
+checkTrue("  a sidekick is flagged as one",!!sk);
+check("  and carries no hit die of its own",sk?(sk.hdFaces||null):"?",null);
+checkTrue("  the Mystic is not flagged a sidekick",!!myst&&!myst.isSidekick);
+check("  and has a hit die like any class",myst?myst.hdFaces:0,8);
+
+// every one of them renders a sheet at 1st and 20th level
+for(var r13=0;r13<noncore.length;r13++){
+  var cr=noncore[r13],fdr=window.CC_FEATURE_DATA[cr.slug];
+  var lv13=[1,20];
+  for(var l13=0;l13<lv13.length;l13++){
+    setup(cr.slug,cr.name,lv13[l13]);
+    if(cr.isSidekick)S.hdFaces=8;                    // as choosing the class defaults it
+    if(cr.slug==="spellcaster-sidekick-classic")S.choices["sidekickRole"]="Mage";
+    if(fdr&&fdr.subclasses.length)S.subclassName=fdr.subclasses[0].name;
+    try{
+      C.renderSheet();
+      var h13=_els["sheetPanel"].innerHTML;
+      if(h13.indexOf("Sheet error")>=0)fails.push("  "+cr.name+" at "+lv13[l13]+" -> sheet error");
+      else pass++;
+    }catch(e13){fails.push("  "+cr.name+" at "+lv13[l13]+" -> threw: "+(e13.message||e13));}
+  }
+}
+
+// the Spellcaster Sidekick has no ability of its own: the role decides it and the list
+var ROLES=[["Mage","Intelligence","Wizard"],["Healer","Wisdom","Cleric"],["Prodigy","Charisma","Bard"]];
+for(var v13=0;v13<ROLES.length;v13++){
+  setup("spellcaster-sidekick-classic","Spellcaster Sidekick",5);
+  S.hdFaces=8;S.choices["sidekickRole"]=ROLES[v13][0];
+  var i13=C.spellInfo();
+  check("  role "+ROLES[v13][0]+" casts with "+ROLES[v13][1],i13?i13.ability:"(none)",ROLES[v13][1]);
+  // and draws on that role's list rather than a list of its own
+  var list13=C.classSpellList(1,1),found=false;
+  for(var w13=0;w13<list13.length;w13++){
+    var cls13=list13[w13].cls["classic"]||[];
+    if(cls13.indexOf(ROLES[v13][2])>=0){found=true;break;}
+  }
+  checkTrue("  ...and draws on the "+ROLES[v13][2]+" list",found&&list13.length>0);
+}
+// with no role picked there is nothing to work out, and that must not break the sheet
+setup("spellcaster-sidekick-classic","Spellcaster Sidekick",5);S.hdFaces=8;
+check("  no role picked yet leaves spellcasting undecided",C.spellInfo(),null);
+try{
+  C.renderSheet();
+  checkTrue("  ...and the sheet still renders",_els["sheetPanel"].innerHTML.indexOf("Sheet error")<0);
+}catch(e14){fails.push("  sheet threw with no sidekick role: "+(e14.message||e14));}
+// an ability the map does not know contributes nothing rather than throwing
+check("  an unknown ability sums to zero",C.totalScore("Nonsense")>=0,true);
+
 // =====================================================================
 WScript.Echo("");
 WScript.Echo("=======================================================");

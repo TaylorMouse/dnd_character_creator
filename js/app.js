@@ -57,7 +57,19 @@
   /* Homebrew books use a long code on their entries ("GriffonsSaddlebag2") but declare
      a short abbreviation of their own ("TGS2"), which is what belongs on a sheet. */
   function srcAbbr(code){
-    return (window.CC_SOURCE_ABBR&&window.CC_SOURCE_ABBR[code])||code;
+    var known=window.CC_SOURCE_ABBR&&window.CC_SOURCE_ABBR[code];
+    if(known)return known;
+    // Unearthed Arcana articles are not in the book list, and their codes read as one long
+    // word: "UATheMysticClass" is no use in a dropdown, "UA" is.
+    if(/^UA[A-Z]/.test(code))return "UA";
+    return code;
+  }
+  /* A readable title for a source the book list does not cover, by breaking the code back
+     into words: "UATheMysticClass" -> "Unearthed Arcana: The Mystic Class". */
+  function derivedSourceTitle(code){
+    if(!/^UA[A-Z]/.test(code))return "";
+    var words=code.slice(2).replace(/([a-z0-9])([A-Z])/g,"$1 $2");
+    return "Unearthed Arcana: "+words;
   }
   // Third-party content is labelled as such rather than passed off as official.
   function hbAuthor(code){
@@ -66,7 +78,7 @@
   }
   function isHomebrew(code){return hbAuthor(code)!==null;}
   function sourceName(code){
-    var t=bookTitle(code),a=hbAuthor(code);
+    var t=bookTitle(code)||derivedSourceTitle(code),a=hbAuthor(code);
     var tail=isHomebrew(code)?" — homebrew"+(a?" by "+a:""):"";
     return (t?t+" ("+srcAbbr(code)+")":srcAbbr(code))+tail;
   }
@@ -103,7 +115,9 @@
   };
   function editionLabel(ed){return ed==="one"?"2024 Revised Rules":"2014 Core Rules";}
   function autoHp(faces,level){if(!faces||!level)return null;return faces+(level-1)*(Math.floor(faces/2)+1);}
-  function classesForEdition(ed){return ALL.filter(function(c){return c.edition===ed&&c.isCore;}).sort(function(a,b){return a.name.localeCompare(b.name);});}
+  function classesForEdition(ed){return ALL.filter(function(c){return c.edition===ed;}).sort(function(a,b){return a.name.localeCompare(b.name);});}
+  function classBySlug(slug){return ALL.filter(function(c){return c.slug===slug;})[0]||null;}
+  function isSidekickClass(){var c=classBySlug(state.slug);return !!(c&&c.isSidekick);}
 
   /* ---------- entry / tag renderer ---------- */
   function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
@@ -255,11 +269,27 @@
   }
   function showBuild(step){$("screen-edition").classList.add("hidden");$("screen-build").classList.remove("hidden");setStep(step||"class");}
 
+  /* The core classes first, then the rest grouped by where they come from - the sidekick
+     classes from Tasha's and the Mystic from Unearthed Arcana - so it is obvious at a
+     glance which are the standard thirteen. */
   function populateClasses(){
     var sel=$("classSelect");sel.innerHTML='<option value="">— Choose a class —</option>';
-    classesForEdition(state.edition).forEach(function(c){
-      var o=document.createElement("option");o.value=c.slug;o.textContent=c.name;sel.appendChild(o);
-    });
+    var list=classesForEdition(state.edition);
+    function group(label,items){
+      if(!items.length)return;
+      var g=document.createElement("optgroup");g.label=label;
+      items.forEach(function(c){
+        var o=document.createElement("option");
+        o.value=c.slug;
+        o.textContent=c.name+(c.isCore?"":" ("+srcAbbr(c.source)+")");
+        o.title=sourceName(c.source);
+        g.appendChild(o);
+      });
+      sel.appendChild(g);
+    }
+    group("Core classes",list.filter(function(c){return c.isCore;}));
+    group("Sidekicks",list.filter(function(c){return !c.isCore&&c.isSidekick;}));
+    group("Unearthed Arcana",list.filter(function(c){return !c.isCore&&!c.isSidekick;}));
   }
   function populateLevels(){
     var sel=$("levelSelect");sel.innerHTML="";
@@ -324,7 +354,23 @@
     $("featuresWrap").classList.toggle("hidden",!hasClass);
     if(hasClass){
       $("ccName").textContent=state.className;
-      $("ccSub").innerHTML=srcTag(state.source)+" • d"+state.hdFaces+" hit die";
+      /* A sidekick's hit die belongs to the creature, not the class, so it is chosen here
+         rather than stated - by size, as the sidekick rules set it. */
+      if(isSidekickClass()){
+        var HD=[[4,"Tiny"],[6,"Small"],[8,"Medium"],[10,"Large"],[12,"Huge"],[20,"Gargantuan"]];
+        $("ccSub").innerHTML=srcTag(state.source)+' • hit die <select id="skHd">'+
+          HD.map(function(h){
+            return '<option value="'+h[0]+'"'+(state.hdFaces===h[0]?" selected":"")+">d"+h[0]+" ("+h[1]+")</option>";
+          }).join("")+"</select>";
+      }else{
+        $("ccSub").innerHTML=srcTag(state.source)+" • d"+state.hdFaces+" hit die";
+      }
+      var skHd=$("skHd");
+      if(skHd)skHd.addEventListener("change",function(e){
+        state.hdFaces=parseInt(e.target.value,10)||8;
+        state.manualHp=null;                       // the automatic total changes with the die
+        render();
+      });
       $("classEmblem").textContent=state.className.charAt(0);
     }
     $("lvlDisplay").textContent=state.level;
@@ -588,8 +634,13 @@
   }
 
   function hitPointsBody(fd){
-    var f=fd.hdFaces,cn=fd.name,avg=Math.floor(f/2)+1;
-    return "<p class='prof-line'><b>Hit Dice:</b> 1d"+f+" per "+cn+" level</p>"+
+    /* A sidekick class states no hit die - the creature brings its own - so the one chosen
+       for this character is used instead of the class's. */
+    var f=fd.hdFaces||state.hdFaces,cn=fd.name;
+    if(!f)return "<p class='prof-line tag-note'>A sidekick uses the hit die of the creature it is. Choose one above.</p>";
+    var avg=Math.floor(f/2)+1;
+    var note=fd.hdFaces?"":" <span class='tag-note'>(from the creature, not the class)</span>";
+    return "<p class='prof-line'><b>Hit Dice:</b> 1d"+f+" per "+cn+" level"+note+"</p>"+
       "<p class='prof-line'><b>Hit Points at 1st Level:</b> "+f+" + your Constitution modifier</p>"+
       "<p class='prof-line'><b>Hit Points at Higher Levels:</b> 1d"+f+" (or "+avg+") + your Constitution modifier per "+cn+" level after 1st</p>";
   }
@@ -780,6 +831,8 @@
         if(fsk.count){body+=fsk.html;choicesN=fsk.count;if(fsk.pending)pending=true;}
         var fpc=featureProfChoiceHtml(f);
         if(fpc.count){body+=fpc.html;choicesN+=fpc.count;if(fpc.pending)pending=true;}
+        var skr=sidekickRoleHtml(f);
+        if(skr.count){body+=skr.html;choicesN+=skr.count;if(skr.pending)pending=true;}
         if(f.name==="Expertise"){var exh=expertiseHtml(f);body+=exh.html;if(exh.count){choicesN=exh.count;if(exh.pending)pending=true;}}
         if(f.isSub){
           var tc=tableChoiceCfg(fd.name,chosen&&chosen.shortName,f.name);
@@ -824,6 +877,14 @@
       cb.addEventListener("change",function(){
         var k=cb.getAttribute("data-key");
         if(cb.checked)delete state.choices[k];else state.choices[k]="1";
+        render();
+      });
+    });
+    Array.prototype.forEach.call($("featureList").querySelectorAll(".sk-role"),function(sel){
+      sel.addEventListener("click",function(e){e.stopPropagation();});
+      sel.addEventListener("change",function(e){
+        state.choices["sidekickRole"]=e.target.value||"";
+        state.spells={cantrips:[],spells:[],levelFilter:"",q:""};   // a new role means a new list
         render();
       });
     });
@@ -1694,7 +1755,10 @@
   }
   function pbRemaining(){var u=0;ABILITIES.forEach(function(a){u+=(POINT_BUY_COST[state.abilities.base[a]]||0);});return 27-u;}
   function baseScore(a){var ab=state.abilities;if(ab.method==="pointbuy")return ab.base[a]||8;var v=ab.assign[a];return v?parseInt(v,10):null;}
-  function bonusSum(a){return abilityBonusMap()[a].reduce(function(s,b){return s+b.amt;},0);}
+  function bonusSum(a){
+    var list=abilityBonusMap()[a];       // an ability we do not recognise contributes nothing
+    return list?list.reduce(function(s,b){return s+b.amt;},0):0;
+  }
   function totalScore(a){
     var ov=state.abilities.override[a];
     if(ov!==undefined&&ov!==""&&ov!==null&&!isNaN(parseInt(ov,10)))return parseInt(ov,10);
@@ -2295,17 +2359,53 @@
       default:return Math.min(9,Math.ceil(L/2));
     }
   }
+  /* The Spellcaster Sidekick has no spellcasting ability of its own: you choose a role,
+     and that decides both the ability and which class lists it draws spells from. Without
+     the choice the class has no ability at all, which is why it needs asking for. */
+  var SIDEKICK_ROLES=[
+    {name:"Mage",ability:"Intelligence",lists:["Wizard"]},
+    {name:"Healer",ability:"Wisdom",lists:["Cleric","Druid"]},
+    {name:"Prodigy",ability:"Charisma",lists:["Bard","Warlock"]}
+  ];
+  function sidekickRole(){
+    if(state.slug!=="spellcaster-sidekick-classic")return null;
+    var picked=state.choices["sidekickRole"];
+    for(var i=0;i<SIDEKICK_ROLES.length;i++)if(SIDEKICK_ROLES[i].name===picked)return SIDEKICK_ROLES[i];
+    return null;
+  }
+  function sidekickRoleHtml(f){
+    if(state.slug!=="spellcaster-sidekick-classic"||f.name!=="Spellcasting")return {html:"",count:0,pending:false};
+    var cur=state.choices["sidekickRole"]||"";
+    var html='<div class="origin-picker"><label>Role — this sets the spellcasting ability and the spell list</label>'+
+      '<select class="sk-role"><option value="">— Choose a role —</option>'+
+      SIDEKICK_ROLES.map(function(r){
+        return '<option value="'+esc(r.name)+'"'+(cur===r.name?" selected":"")+">"+
+          esc(r.name+" — "+r.lists.join(" and ")+" spells, "+r.ability)+"</option>";
+      }).join("")+"</select></div>";
+    return {html:html,count:1,pending:!cur};
+  }
   function spellInfo(){
     var sc=state.slug&&window.CC_SPELLCAST?window.CC_SPELLCAST[state.slug]:null;
     if(!sc)return null;
+    var role=sidekickRole();
+    if(role){                                  // the role supplies what the class does not
+      var copy={};for(var k in sc)copy[k]=sc[k];
+      copy.ability=role.ability;sc=copy;
+    }else if(!sc.ability)return null;           // nothing to work out until a role is picked
     var L=state.level,cantripsKnown=(sc.cantrips&&sc.cantrips[L-1])||0,maxLevel=maxSpellLevel(sc.caster,L),prepared=!sc.known,spellsCount;
     if(sc.known)spellsCount=sc.known[L-1]||0;
     else{var mod=abMod(totalScore(sc.ability));spellsCount=Math.max(1,mod+(sc.caster==="full"?L:Math.floor(L/2)));}
     return {sc:sc,ability:sc.ability,cantripsKnown:cantripsKnown,spellsCount:spellsCount,maxLevel:maxLevel,prepared:prepared};
   }
   function classSpellList(minL,maxL){
-    var ed=state.edition,cn=state.className;
-    return (window.CC_SPELLS||[]).filter(function(s){return s.level>=minL&&s.level<=maxL&&s.cls[ed]&&s.cls[ed].indexOf(cn)>=0;});
+    var ed=state.edition,role=sidekickRole();
+    // a sidekick draws on the class lists its role names, having none of its own
+    var names=role?role.lists:[state.className];
+    return (window.CC_SPELLS||[]).filter(function(s){
+      if(s.level<minL||s.level>maxL||!s.cls[ed])return false;
+      for(var i=0;i<names.length;i++)if(s.cls[ed].indexOf(names[i])>=0)return true;
+      return false;
+    });
   }
   function spKey(s){return s.name+"|"+s.source;}
   function pruneSpells(){
@@ -4649,7 +4749,11 @@
     var slug=e.target.value;
     if(!slug){state.className=null;state.slug=null;state.fdata=null;render();return;}
     var c=classesForEdition(state.edition).filter(function(x){return x.slug===slug;})[0];
-    state.className=c.name;state.source=c.source;state.hdFaces=c.hdFaces;state.slug=slug;
+    state.className=c.name;state.source=c.source;state.slug=slug;
+    /* A sidekick is an existing creature gaining class levels, so its hit die comes from
+       its own stat block rather than the class. Default to d8, a Medium creature, and let
+       it be changed below. */
+    state.hdFaces=c.hdFaces||(c.isSidekick?8:null);
     state.manualHp=null;state.subclassName=null;state.fdata=null;state.choices={};state.openPanels={};
     state.equipment.starting={};state.equipment.startingAdded=false;
     state.spells={cantrips:[],spells:[],levelFilter:"",q:""};

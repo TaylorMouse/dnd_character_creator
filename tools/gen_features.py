@@ -263,7 +263,10 @@ for d in docs:
             fp.write("window.CC_FEATURE_DATA[%s] = %s;\n" % (json.dumps(slug), json.dumps(obj, ensure_ascii=False)))
         index.append({"name": name, "source": c["source"], "edition": edition,
             "editionLabel": "2024" if edition == "one" else "2014", "hdFaces": obj["hdFaces"],
-            "isCore": name in CORE, "slug": slug, "nSub": len(subclasses)})
+            "isCore": name in CORE, "slug": slug, "nSub": len(subclasses),
+            # a sidekick is an existing creature that gains class levels, so it brings its
+            # own hit die rather than the class supplying one
+            "isSidekick": bool(c.get("isSidekick"))})
 
 with open(_os.path.join(_RES, 'data-classes.js'), "w", encoding="utf-8") as fp:
     fp.write("// Auto-generated from 5etools v2.24.3 data/class/*.json\n")
