@@ -70,6 +70,56 @@ def resolve(m,seen=None):
     return out
 monsters=[resolve(m) for m in monsters]
 
+# ---- the versions a stat block carries with it ----
+# A creature can bring variants of itself: the Draconic Spirit is one stat block that
+# stands for a chromatic, metallic or gem dragon, and Andir Valmakos has a version for
+# each level. 5etools lists them as creatures in their own right, so they are built here
+# rather than left buried in the parent, where nothing would ever show them.
+def _fill(obj,vars):
+    """Replace {{name}} placeholders throughout a templated version."""
+    if isinstance(obj,str):
+        for k,v in vars.items(): obj=obj.replace("{{%s}}"%k,str(v))
+        return obj
+    if isinstance(obj,list): return [_fill(x,vars) for x in obj]
+    if isinstance(obj,dict): return {k:_fill(v,vars) for k,v in obj.items()}
+    return obj
+
+def _build_version(base,v):
+    out=_copylib.deepcopy(base)
+    out.pop("_versions",None)
+    mods=v.get("_mod")
+    for k,val in v.items():
+        if k.startswith("_"): continue
+        out[k]=_copylib.deepcopy(val)
+    try:
+        for k,ops in (mods or {}).items():
+            if k!="*": _apply_mod(out,k,ops)
+    except Exception: pass
+    return out
+
+def expand_versions(m):
+    out=[]
+    for v in (m.get("_versions") or []):
+        if "_abstract" in v:
+            for impl in (v.get("_implementations") or []):
+                out.append(_build_version(m,_fill(v["_abstract"],impl.get("_variables") or {})))
+        else:
+            out.append(_build_version(m,v))
+    return out
+
+# A creature that copies another inherits its versions too, so the same variant would be
+# built once per copy - the Archmage's familiar form appeared twenty-seven times. The first
+# of each name wins, and the rest are duplicates of it.
+_seen_v={(m.get("name"),m.get("source")) for m in monsters}
+_versions=[]
+for _m in monsters:
+    for _v in expand_versions(_m):
+        _key=(_v.get("name"),_v.get("source"))
+        if _key in _seen_v: continue
+        _seen_v.add(_key)
+        _versions.append(_v)
+monsters.extend(_versions)
+
 # ---- which printings use the 2024 layout ----
 # The two editions lay a stat block out differently: 2024 folds the proficiency bonus into
 # the challenge line and calls it CR. The books that mark themselves as the new edition are
@@ -184,6 +234,11 @@ def ac_str(ac):
     for a in ac:
         if isinstance(a,int): parts.append(str(a))
         else:
+            # a summoned creature's armour is a formula, not a number: "14 + the
+            # spell's level". It lives under "special" and has no number to read.
+            if a.get("special"):
+                parts.append(re.sub(r"\{@\w+ ([^}|]+)(\|[^}]*)?\}","\\1",str(a["special"])))
+                continue
             v=str(a.get("ac",""))
             frm=a.get("from") or []
             frm=[re.sub(r"\{@\w+ ([^}|]+)(\|[^}]*)?\}",r"\1",f) for f in frm]

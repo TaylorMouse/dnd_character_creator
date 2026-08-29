@@ -1745,6 +1745,55 @@ try{
 // an ability the map does not know contributes nothing rather than throwing
 check("  an unknown ability sums to zero",C.totalScore("Nonsense")>=0,true);
 
+
+section("14. Creature data the stat block used to lose");
+// A summoned creature's armour is a formula rather than a number, and lived under a
+// different key, so it came through as an empty string.
+var CRDATA=null;
+try{
+  eval(readFile(ROOT+["resources","creatures","FTD.js"].join(String.fromCharCode(92))));
+  CRDATA=window.CC_CREATURE_DATA&&window.CC_CREATURE_DATA["FTD"];
+}catch(eC){fails.push("  could not load the FTD creatures: "+(eC.message||eC));}
+if(CRDATA){
+  var ds=CRDATA["Draconic Spirit"];
+  checkTrue("  the Draconic Spirit is in the data",!!ds);
+  if(ds){
+    checkTrue("  its armour class is not empty",!!ds.ac&&ds.ac.length>0);
+    checkTrue("  ...and reads as the formula it is",ds.ac.indexOf("14 +")===0);
+    checkTrue("  its hit points are the formula too",!!ds.hp&&ds.hp.indexOf("50 +")===0);
+    checkTrue("  and the summoning spell is named",!!ds.summonSpell);
+  }
+  // the versions a stat block carries are creatures in their own right
+  checkTrue("  its chromatic version exists",!!CRDATA["Draconic Spirit (Chromatic)"]);
+  checkTrue("  its gem version exists",!!CRDATA["Draconic Spirit (Gem)"]);
+  checkTrue("  its metallic version exists",!!CRDATA["Draconic Spirit (Metallic)"]);
+  var chrom=CRDATA["Draconic Spirit (Chromatic)"];
+  if(chrom){
+    checkTrue("  a version keeps what it does not override",chrom.ac===CRDATA["Draconic Spirit"].ac);
+    checkTrue("  and overrides what it does",chrom.resist&&chrom.resist.length===5&&chrom.resist[0]==="acid");
+  }
+}
+// the templated versions, where the name and the text are filled in from variables
+var XP=null;
+try{
+  eval(readFile(ROOT+["resources","creatures","XPHB.js"].join(String.fromCharCode(92))));
+  XP=window.CC_CREATURE_DATA&&window.CC_CREATURE_DATA["XPHB"];
+}catch(eX){}
+if(XP){
+  var made=0,want=["Acid","Cold","Fire","Lightning","Poison"];
+  for(var x14=0;x14<want.length;x14++)if(XP["Draconic Spirit ("+want[x14]+")"])made++;
+  check("  a templated version is built once per variable",made,want.length);
+}
+// every creature the index promises must actually be there to open
+try{ eval(readFile(ROOT+["resources","data-creatures.js"].join(String.fromCharCode(92)))); }catch(eI){}
+var idx=window.CC_CREATURES||[],dup={},dupes=0;
+for(var i14=0;i14<idx.length;i14++){
+  var k14=idx[i14].n+"|"+idx[i14].s;
+  if(dup[k14])dupes++;else dup[k14]=1;
+}
+check("  the index lists no creature twice",dupes,0);
+checkTrue("  the index grew when the versions were added",idx.length>4600);
+
 // =====================================================================
 WScript.Echo("");
 WScript.Echo("=======================================================");

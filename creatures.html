@@ -58,6 +58,10 @@ table.sp-table tbody tr.sel{background:rgba(200,16,46,.12)}
 .cr-abil b{display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
 .cr-abil span{font-size:14px;font-weight:700}
 .cr-abil i{display:block;font-size:11.5px;color:var(--muted);font-style:normal}
+/* the 2024 layout adds the saving throw under the modifier, labelled so the two are not
+   mistaken for each other */
+.cr-abil .sv{display:block;font-size:11.5px;text-decoration:none;color:var(--accent2);font-weight:700}
+.cr-abil.with-saves .sv::before{content:"save ";font-weight:400;color:var(--muted);font-size:10px}
 .sp-sec-h{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--accent2);margin:14px 0 7px;padding-bottom:3px;border-bottom:1px solid var(--line)}
 .cr-blk{margin:0 0 9px}
 /* the lore behind the creature: prose rather than rules, so it reads wider and looser */
@@ -477,14 +481,44 @@ table.sp-table tbody tr.sel{background:rgba(200,16,46,.12)}
     for(k in o)out.push(fmt(k,o[k]));
     return out.join(", ");
   }
-  function dmgList(a){
-    if(!a)return "";
-    return a.map(function(x){
-      if(typeof x==="string")return x;
-      var inner=(x.resist||x.immune||x.vulnerable||[]).map(function(y){return typeof y==="string"?y:"";}).filter(Boolean);
-      return inner.join(", ")+(x.note?" "+x.note:"");
-    }).filter(Boolean).join("; ");
+  /* Damage and condition lists are mostly plain words, but an entry can be an object
+     carrying its own sub-list with a note before or after it - "(Chromatic and Metallic
+     Only)" - or replace the list with prose under "special".
+     The punctuation is not free choice: plain terms are separated by commas, a group
+     ends with "and" before its last term, and a group sits apart from its neighbours
+     with a semicolon. */
+  var IMM_PROPS=["immune","resist","vulnerable","conditionImmune"];
+  function immNextProp(o){
+    for(var i=0;i<IMM_PROPS.length;i++)if(o&&o[IMM_PROPS[i]]!==undefined)return IMM_PROPS[i];
+    return null;
   }
+  function immIsSimple(v){
+    if(typeof v==="string"||(v&&v.special))return true;
+    return immNextProp(v)==null;
+  }
+  function immObject(o){
+    var stack=[];
+    if(o.preNote)stack.push(o.preNote);
+    var prop=immNextProp(o);
+    if(prop)stack.push(immArray(o[prop],true));
+    if(o.note)stack.push(o.note);
+    return stack.join(" ");
+  }
+  function immArray(values,isGroup){
+    var out="";
+    for(var i=0;i<values.length;i++){
+      var val=values[i],simple=immIsSimple(val);
+      out+=simple?(val&&val.special?val.special:val):immObject(val);
+      if(i===values.length-1)break;
+      var nextSimple=immIsSimple(values[i+1]);
+      if(!simple||!nextSimple)out+="; ";
+      else if(!isGroup||i!==values.length-2||values.length<2)out+=", ";
+      else if(values.length===2)out+=" and ";
+      else out+=", and ";
+    }
+    return out;
+  }
+  function dmgList(a){return a?immArray(a,false):"";}
   /* A section can carry an introduction before its entries and a qualifier after them:
      the homunculus's actions need its master's bonus action, and Charmayne's reactions
      come with a limit on how many she may take. */
@@ -556,12 +590,23 @@ table.sp-table tbody tr.sel{background:rgba(200,16,46,.12)}
     }
     if(m.hp)h+='<p class="cr-line"><b>Hit Points</b> '+renderTags(m.hp)+"</p>";
     if(m.speed)h+='<p class="cr-line"><b>Speed</b> '+renderTags(m.speed)+"</p>";
-    h+='<div class="cr-abil">'+["str","dex","con","int","wis","cha"].map(function(k){
+    /* The 2024 layout puts a saving throw beside each ability - the creature's own bonus
+       where it has one, otherwise just the ability modifier - and drops the separate
+       Saving Throws line. The 2014 layout keeps that line and shows no saves here. */
+    var showSaves=(m.ed==="2024");
+    h+='<div class="cr-abil'+(showSaves?" with-saves":"")+'">'+["str","dex","con","int","wis","cha"].map(function(k){
       var v=m.abil?m.abil[k]:null;
-      return "<div><b>"+k.toUpperCase()+"</b><span>"+(v==null?"—":v)+"</span><i>"+(v==null?"":mod(v))+"</i></div>";
+      var cell="<div><b>"+k.toUpperCase()+"</b><span>"+(v==null?"—":v)+"</span><i>"+(v==null?"":mod(v))+"</i>";
+      if(showSaves){
+        var sv=(m.save&&m.save[k]!=null)?String(m.save[k]):(v==null?"—":mod(v));
+        if(sv&&sv.charAt(0)!=="+"&&sv.charAt(0)!=="-"&&sv!=="—")sv="+"+sv;
+        cell+='<u class="sv" title="Saving throw">'+esc(sv)+"</u>";
+      }
+      return cell+"</div>";
     }).join("")+"</div>";
     h+='<div class="cr-rule"></div>';
-    if(m.save)h+='<p class="cr-line"><b>Saving Throws</b> '+esc(joinMap(m.save,function(k,v){return k.toUpperCase()+" "+v;}))+"</p>";
+    if(m.save&&m.ed!=="2024")
+      h+='<p class="cr-line"><b>Saving Throws</b> '+esc(joinMap(m.save,function(k,v){return k.toUpperCase()+" "+v;}))+"</p>";
     if(m.skill)h+='<p class="cr-line"><b>Skills</b> '+esc(skillLine(m.skill))+"</p>";
     var res=dmgList(m.resist),imm=dmgList(m.immune),vul=dmgList(m.vulnerable),ci=dmgList(m.conditionImmune);
     if(vul)h+='<p class="cr-line"><b>Damage Vulnerabilities</b> '+renderTags(vul)+"</p>";
