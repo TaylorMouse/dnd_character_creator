@@ -2,8 +2,8 @@
 import json, glob, os, re
 import sys, os as _os
 # 5etools data root: pass as argv[1], else use the default below.
-_DEFAULT_DATA = r"E:\D&D\Tools\5e.tools\5etools-v2.33.1\data"
-_DATA_ROOT = sys.argv[1] if len(sys.argv) > 1 else _DEFAULT_DATA
+import datasrc
+_DATA_ROOT = datasrc.data_root()
 _REPO = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
 _RES  = _os.path.join(_REPO, "resources")
 
@@ -269,7 +269,7 @@ for d in docs:
             "isSidekick": bool(c.get("isSidekick"))})
 
 with open(_os.path.join(_RES, 'data-classes.js'), "w", encoding="utf-8") as fp:
-    fp.write("// Auto-generated from 5etools v2.24.3 data/class/*.json\n")
+    fp.write("// Auto-generated from 5etools v"+datasrc.version()+" data/class/*.json\n")
     fp.write("window.CC_CLASSES = " + json.dumps(index, ensure_ascii=False, indent=2) + ";\n")
 
 print("wrote", len(index), "files")

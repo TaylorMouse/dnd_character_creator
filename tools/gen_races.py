@@ -2,8 +2,8 @@
 import json,io,os,re
 import sys, os as _os
 # 5etools data root: pass as argv[1], else use the default below.
-_DEFAULT_DATA = r"E:\D&D\Tools\5e.tools\5etools-v2.33.1\data"
-_DATA_ROOT = sys.argv[1] if len(sys.argv) > 1 else _DEFAULT_DATA
+import datasrc
+_DATA_ROOT = datasrc.data_root()
 _REPO = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
 _RES  = _os.path.join(_REPO, "resources")
 
@@ -353,7 +353,7 @@ for k in out:
     core="XPHB" if k=="one" else "PHB"
     out[k].sort(key=lambda x:(x["source"]!=core, x["name"]))
 p=_os.path.join(_RES, 'data-races.js')
-io.open(p,"w",encoding="utf-8").write("// Auto-generated from 5etools v2.24.3 races.json\nwindow.CC_RACES = "+json.dumps(out,ensure_ascii=False)+";\n")
+io.open(p,"w",encoding="utf-8").write("// Auto-generated from 5etools v"+datasrc.version()+" races.json\nwindow.CC_RACES = "+json.dumps(out,ensure_ascii=False)+";\n")
 print("classic:",len(out["classic"]),"| one:",len(out["one"]),"|",round(os.path.getsize(p)/1024),"KB")
 print("homebrew species:",[x["name"] for k in out for x in out[k] if x.get("hb")])
 def show(nm,ed):

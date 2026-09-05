@@ -21,11 +21,13 @@ _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _candidate_dirs(data_root):
-    out = []
-    env = os.environ.get("CC_HOMEBREW", "")
-    for p in env.split(";"):
-        p = p.strip()
-        if p: out.append(p)
+    # the configured locations first: a release ships no homebrew, so where the books
+    # live has nothing to do with where the data folder happens to be
+    try:
+        import datasrc
+        out = list(datasrc.homebrew_paths())
+    except Exception:
+        out = [p.strip() for p in os.environ.get("CC_HOMEBREW", "").split(";") if p.strip()]
     out.append(os.path.join(_REPO, "homebrew"))
     up1 = os.path.dirname(os.path.abspath(data_root))          # 5etools-vX.Y.Z
     up2 = os.path.dirname(up1)                                  # 5e.tools

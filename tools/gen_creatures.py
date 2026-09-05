@@ -6,8 +6,8 @@
 # file would be tens of megabytes.
 import json,io,os,glob,re,sys,copy as _copylib
 
-_DEFAULT_DATA = r"E:\D&D\Tools\5e.tools\5etools-v2.33.1\data"
-_DATA_ROOT = sys.argv[1] if len(sys.argv) > 1 else _DEFAULT_DATA
+import datasrc
+_DATA_ROOT = datasrc.data_root()
 _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _RES  = os.path.join(_REPO, "resources")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

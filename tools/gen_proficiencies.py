@@ -3,8 +3,8 @@
 # feature or DM grant would name, so a player can add one from a dropdown instead of typing.
 import json, io, os, sys
 
-_DEFAULT_DATA = r"E:\D&D\Tools\5e.tools\5etools-v2.33.1\data"
-_DATA_ROOT = sys.argv[1] if len(sys.argv) > 1 else _DEFAULT_DATA
+import datasrc
+_DATA_ROOT = datasrc.data_root()
 _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _RES = os.path.join(_REPO, "resources")
 

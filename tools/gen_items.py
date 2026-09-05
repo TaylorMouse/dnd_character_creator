@@ -2,8 +2,8 @@
 import json,io,os,re
 import sys, os as _os
 # 5etools data root: pass as argv[1], else use the default below.
-_DEFAULT_DATA = r"E:\D&D\Tools\5e.tools\5etools-v2.33.1\data"
-_DATA_ROOT = sys.argv[1] if len(sys.argv) > 1 else _DEFAULT_DATA
+import datasrc
+_DATA_ROOT = datasrc.data_root()
 _REPO = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
 _RES  = _os.path.join(_REPO, "resources")
 
@@ -211,7 +211,7 @@ io.open(pv,"w",encoding="utf-8").write(
 print("specific variants:",len(variants),"|",round(os.path.getsize(pv)/1024),"KB -> data-items-variants.js")
 
 p=_os.path.join(_RES, 'data-items.js')
-io.open(p,"w",encoding="utf-8").write("// Auto-generated from 5etools v2.24.3 items-base.json + items.json\nwindow.CC_ITEMS = "+json.dumps(out,ensure_ascii=False)+";\n")
+io.open(p,"w",encoding="utf-8").write("// Auto-generated from 5etools v"+datasrc.version()+" items-base.json + items.json\nwindow.CC_ITEMS = "+json.dumps(out,ensure_ascii=False)+";\n")
 from collections import Counter
 print("items:",len(out),"|",round(os.path.getsize(p)/1024),"KB")
 print("of which homebrew:",sum(1 for x in out if x.get("hb")),"from",sorted(_hb_codes) or "-")

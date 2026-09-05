@@ -272,6 +272,12 @@
   /* The core classes first, then the rest grouped by where they come from - the sidekick
      classes from Tasha's and the Mystic from Unearthed Arcana - so it is obvious at a
      glance which are the standard thirteen. */
+  /* The footer used to name the data release in hard-coded text, and sat nine releases
+     behind before anyone noticed. The generators stamp the real one into the data now. */
+  function showDataVersion(){
+    var el=$("dataVer");
+    if(el&&window.CC_DATA_VERSION)el.textContent="v"+window.CC_DATA_VERSION;
+  }
   function populateClasses(){
     var sel=$("classSelect");sel.innerHTML='<option value="">— Choose a class —</option>';
     var list=classesForEdition(state.edition);
@@ -1276,7 +1282,11 @@
           want.schools[(SCHOOL_LETTER[s.toUpperCase()]||s).toLowerCase()]=1;
         });
       }
-      else if(k==="class")want.cls=v;
+      else if(k==="class"){
+        // a filter may name several lists at once, as "class=Cleric;Wizard" does
+        want.cls={};
+        v.split(";").forEach(function(c){c=c.trim();if(c)want.cls[c.toLowerCase()]=1;});
+      }
       else if(/ritual/i.test(v))want.ritual=true;
     });
     var out=[];
@@ -1286,9 +1296,9 @@
       if(want.ritual&&!s.ritual)return;
       if(want.cls){
         // the filters are inconsistently cased ("class=Bard" but "class=cleric")
-        var c=s.cls||{},hit=false,wl=want.cls.toLowerCase();
+        var c=s.cls||{},hit=false;
         [].concat(c.classic||[],c.one||[]).forEach(function(x){
-          if(String(x).toLowerCase()===wl)hit=true;
+          if(want.cls[String(x).toLowerCase()])hit=true;
         });
         if(!hit)return;
       }
@@ -4868,5 +4878,5 @@
       '</div>';
     return;
   }
-  populateLevels();showEdition();
+  populateLevels();showEdition();showDataVersion();
 })();

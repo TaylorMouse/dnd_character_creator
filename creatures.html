@@ -308,6 +308,9 @@ table.sp-table tbody tr.sel{background:rgba(200,16,46,.12)}
       return "<table>"+(head?"<thead><tr>"+head+"</tr></thead>":"")+"<tbody>"+rows+"</tbody></table>";
     }
     if(t==="quote")return "<p><em>"+(e.entries||[]).map(renderInline).join(" ")+"</em></p>";
+    // artwork is not shipped with this app, and an editor's internal note is not for
+    // readers; both would otherwise fall through and leave an empty paragraph behind
+    if(t==="image"||t==="internal")return "";
     /* Sidebars and optional rules. Without these the text inside them was reaching
        renderInline as an object and coming out as nothing at all. */
     if(t==="inset"||t==="insetReadaloud"||t==="variant"||t==="variantInner"||t==="variantSub"){

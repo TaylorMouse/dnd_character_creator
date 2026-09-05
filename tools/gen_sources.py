@@ -1,7 +1,7 @@
 import json, io, os, sys
 # 5etools data root: pass as argv[1], else use the default below.
-_DEFAULT_DATA = r"E:\D&D\Tools\5e.tools\5etools-v2.33.1\data"
-_DATA_ROOT = sys.argv[1] if len(sys.argv) > 1 else _DEFAULT_DATA
+import datasrc
+_DATA_ROOT = datasrc.data_root()
 _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _RES = os.path.join(_REPO, "resources")
 
@@ -52,5 +52,9 @@ io.open(OUT, "w", encoding="utf-8").write(
     "// Long source codes shown under the shorter abbreviation the book declares itself\n"
     "window.CC_SOURCE_ABBR = " + json.dumps(abbr, ensure_ascii=False, sort_keys=True) + ";\n"
     "// Third-party sources -> author, so the app can mark them as homebrew\n"
-    "window.CC_HOMEBREW = " + json.dumps(hb, ensure_ascii=False, sort_keys=True) + ";\n")
-print("sources:", len(found), "| homebrew:", sorted(hb))
+    "window.CC_HOMEBREW = " + json.dumps(hb, ensure_ascii=False, sort_keys=True) + ";\n"
+    # which release this came from, so the page can say so without anyone remembering to
+    # update it by hand - the footer claimed v2.24.3 for nine releases
+    "// The 5etools release this data was generated from.\n"
+    "window.CC_DATA_VERSION = " + json.dumps(datasrc.version()) + ";\n")
+print("sources:", len(found), "| homebrew:", sorted(hb), "| version:", datasrc.version())

@@ -2,8 +2,8 @@
 import json,io,os,glob,re
 import sys, os as _os
 # 5etools data root: pass as argv[1], else use the default below.
-_DEFAULT_DATA = r"E:\D&D\Tools\5e.tools\5etools-v2.33.1\data"
-_DATA_ROOT = sys.argv[1] if len(sys.argv) > 1 else _DEFAULT_DATA
+import datasrc
+_DATA_ROOT = datasrc.data_root()
 _REPO = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
 _RES  = _os.path.join(_REPO, "resources")
 
@@ -134,7 +134,7 @@ for s in spells:
     seen.add(k);uniq.append(s)
 uniq.sort(key=lambda x:(x["level"],x["name"].lower()))
 p1=_os.path.join(_RES, 'data-spells.js')
-io.open(p1,"w",encoding="utf-8").write("// Auto-generated from 5etools v2.24.3 spells + spell-source lookup\nwindow.CC_SPELLS = "+json.dumps(uniq,ensure_ascii=False)+";\n")
+io.open(p1,"w",encoding="utf-8").write("// Auto-generated from 5etools v"+datasrc.version()+" spells + spell-source lookup\nwindow.CC_SPELLS = "+json.dumps(uniq,ensure_ascii=False)+";\n")
 
 # spellcasting progression per class slug
 def slugify(name,edition): return re.sub(r"[^a-z0-9]+","-",name.lower()).strip("-")+"-"+edition
@@ -170,7 +170,7 @@ for fn in glob.glob(os.path.join(DATA,"class","class-*.json")):
             "slots":parse_slots(c),
         }
 p2=_os.path.join(_RES, 'data-spellcasting.js')
-io.open(p2,"w",encoding="utf-8").write("// Auto-generated from 5etools v2.24.3 class spellcasting\nwindow.CC_SPELLCAST = "+json.dumps(sc,ensure_ascii=False)+";\n")
+io.open(p2,"w",encoding="utf-8").write("// Auto-generated from 5etools v"+datasrc.version()+" class spellcasting\nwindow.CC_SPELLCAST = "+json.dumps(sc,ensure_ascii=False)+";\n")
 
 print("spells:",len(uniq),"|",round(os.path.getsize(p1)/1024),"KB")
 print("spellcasting classes:",len(sc))

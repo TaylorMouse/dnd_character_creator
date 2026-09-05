@@ -1,7 +1,7 @@
 import json, io, os, sys
 # 5etools data root: pass as argv[1], else use the default below.
-_DEFAULT_DATA = r"E:\D&D\Tools\5e.tools\5etools-v2.33.1\data"
-_DATA_ROOT = sys.argv[1] if len(sys.argv) > 1 else _DEFAULT_DATA
+import datasrc
+_DATA_ROOT = datasrc.data_root()
 _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _RES = os.path.join(_REPO, "resources")
 OUT = os.path.join(_RES, "data-languages.js")
