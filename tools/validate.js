@@ -75,7 +75,8 @@ app=app.replace("populateLevels();showEdition();",
  "attackRows:attackRows,attacksPerAction:attacksPerAction,spellByKey:spellByKey,ordinal:ordinal,"+
  "entryPlain:entryPlain,featureCards:featureCards,exportTags:exportTags,printSheetHtml:printSheetHtml,raceFeatGrant:raceFeatGrant,raceFeatOptions:raceFeatOptions,raceFeatPicks:raceFeatPicks,raceFeatPending:raceFeatPending,raceFeatHtml:raceFeatHtml,acFormulas:acFormulas,spellFilterPool:spellFilterPool,featSpellBlock:featSpellBlock,allChosenFeats:allChosenFeats,featPickSlots:featPickSlots,featPicks:featPicks,featPicksPending:featPicksPending,featPicksHtml:featPicksHtml,featGrantsAll:featGrantsAll,featResourceBonus:featResourceBonus,optFeatureList:optFeatureList,"+
  "itemMechanics:itemMechanics,skillAdvantage:skillAdvantage,"+
- "itemBonuses:itemBonuses,itemEffectsHtml:itemEffectsHtml,saveBonus:saveBonus,acInfo:acInfo,equipInfo:equipInfo,fxMods:fxMods};");
+ "itemBonuses:itemBonuses,itemEffectsHtml:itemEffectsHtml,saveBonus:saveBonus,acInfo:acInfo,equipInfo:equipInfo,fxMods:fxMods,"+
+ "featSpellExtras:featSpellExtras,featSpellBlock:featSpellBlock};");
 eval(app);
 var C=window.__cc,S=C.state;
 
@@ -1793,6 +1794,57 @@ for(var i14=0;i14<idx.length;i14++){
 }
 check("  the index lists no creature twice",dupes,0);
 checkTrue("  the index grew when the versions were added",idx.length>4600);
+
+
+section("15. Spells a feat adds to your list, or grants at a later level");
+// Mark of Storm grants a cantrip outright, a spell once you reach 3rd level, and widens
+// the class spell list. Only the first of the three was being read.
+var mos=null;
+for(var i15=0;i15<window.CC_FEATS.length;i15++)
+  if(window.CC_FEATS[i15].name==="Mark of Storm")mos=window.CC_FEATS[i15];
+checkTrue("  the feat is in the data",!!mos);
+if(mos){
+  var blk=mos.spells&&mos.spells[0];
+  checkTrue("  it grants a cantrip outright",!!blk&&(blk.fixed||[]).length>0);
+  checkTrue("  it grants a spell at a later level",!!blk&&(blk.later||[]).length>0);
+  checkTrue("  and it widens the spell list",!!blk&&!!blk.expanded);
+  if(blk&&blk.later&&blk.later[0]){
+    check("  the later grant arrives at 3rd level",blk.later[0].level,3);
+    check("  once per day",blk.later[0].rate,"1/day");
+  }
+  if(blk&&blk.expanded){
+    // the key is the spell level the group unlocks at, which is the level of its spells
+    var lv2=(blk.expanded["2"]||[]).join(",");
+    checkTrue("  levitate and shatter arrive with 2nd-level slots",lv2.indexOf("Levitate")>=0);
+    var all15=0;
+    for(var k15 in blk.expanded)all15+=blk.expanded[k15].length;
+    check("  nine spells are added in total",all15,9);
+  }
+}
+
+// a wizard with the feat can choose a spell that is not on the wizard list
+setup("wizard-classic","Wizard",17);
+S.choices["asi:16:mode"]="feat";S.choices["asi:16:feat"]="Mark of Storm";
+var info15=C.spellInfo();
+var withF={};C.classSpellList(0,info15.maxLevel).forEach(function(s){withF[s.name]=1;});
+S.choices["asi:16:feat"]="";
+var noF={};C.classSpellList(0,info15.maxLevel).forEach(function(s){noF[s.name]=1;});
+S.choices["asi:16:feat"]="Mark of Storm";
+checkTrue("  Wind Wall is not a wizard spell",!noF["Wind Wall"]);
+checkTrue("  ...but the feat puts it within reach",!!withF["Wind Wall"]);
+checkTrue("  a spell already on the list is not lost",!!withF["Levitate"]);
+
+// what it grants outright is reported, and only once the level is reached
+var ex15=C.featSpellExtras();
+check("  one spell is granted outright at this level",ex15.later.length,1);
+setup("wizard-classic","Wizard",2);
+S.choices["asi:16:mode"]="feat";S.choices["asi:16:feat"]="Mark of Storm";
+check("  and none below 3rd level",C.featSpellExtras().later.length,0);
+
+// the list widening must not leak into a character without the feat
+setup("wizard-classic","Wizard",17);
+var clean={};C.classSpellList(0,9).forEach(function(s){clean[s.name]=1;});
+checkTrue("  no feat, no Wind Wall",!clean["Wind Wall"]);
 
 // =====================================================================
 WScript.Echo("");

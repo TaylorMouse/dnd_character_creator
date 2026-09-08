@@ -98,37 +98,80 @@ def parse_spells(arr):
 
     5etools nests these: each block may be named ("Bard Spells" - the ones with several
     named blocks make you pick a class first), and lists spells under innate/known/
-    prepared/expanded keyed by class level, where "_" means always. An entry is either a
-    spell name or {"choose": "level=1|school=E;D"} - a filter the app resolves against the
-    spell list. Only the always-on ("_") entries matter for a feat.
+    prepared/expanded. An entry is either a spell name or {"choose": "level=1|school=E;D"},
+    a filter the app resolves against the spell list.
+
+    The keys say WHEN, and they come in three shapes:
+      "_"   always, from the moment you take the feat
+      "3"   from 3rd level in the class
+      "s2"  under "expanded" only: once you can cast 2nd-level spells
+
+    "expanded" is a different kind of grant from the rest. It does not hand you a spell;
+    it widens the list you may choose from, which is how Mark of Storm gives a wizard
+    levitate and sleet storm to learn rather than to cast outright.
     """
     blocks = []
     for blk in arr or []:
         if not isinstance(blk, dict): continue
-        fixed, choose = [], []
-        def take(entry):
+        fixed, choose, later, expanded = [], [], [], {}
+
+        def take(entry, sink):
             if isinstance(entry, str):
                 nm = entry.split("#")[0].split("|")[0].strip()
-                if nm: fixed.append(nm.title())
+                if nm: sink.append(nm.title())
             elif isinstance(entry, dict) and entry.get("choose"):
                 choose.append({"filter": entry["choose"], "count": entry.get("count", 1)})
-        for grp in ("innate", "known", "prepared", "expanded"):
+
+        def drain(body, sink, rate_out=None):
+            """A group is a list of spells, or a rate ({"daily": {"1": [...]}})."""
+            if isinstance(body, list):
+                for e in body: take(e, sink)
+            elif isinstance(body, dict):
+                for rate, lst in body.items():
+                    if isinstance(lst, dict):
+                        for n, l2 in lst.items():
+                            for e in (l2 or []): take(e, sink)
+                            if rate_out is not None:
+                                # "daily" is the key, "day" is the word; a trailing "e"
+                                # on the count means one of each rather than one in total
+                                period = {"daily": "day", "weekly": "week",
+                                          "monthly": "month", "yearly": "year"}.get(rate, rate)
+                                n = str(n)
+                                each = n.endswith("e")
+                                rate_out.append("%s/%s%s" % (n.rstrip("e"), period,
+                                                             " each" if each else ""))
+                    else:
+                        for e in (lst or []): take(e, sink)
+
+        for grp in ("innate", "known", "prepared"):
             lvls = blk.get(grp) or {}
             if not isinstance(lvls, dict): continue
-            body = lvls.get("_")
-            if body is None: continue
-            if isinstance(body, list):
-                for e in body: take(e)
-            elif isinstance(body, dict):
-                # {"daily": {"1e": [...]}} - once per long rest, or per short rest
-                for _rate, lst in body.items():
-                    if isinstance(lst, dict):
-                        for _n, l2 in lst.items():
-                            for e in (l2 or []): take(e)
-                    else:
-                        for e in (lst or []): take(e)
-        if not fixed and not choose: continue
+            for when, body in lvls.items():
+                if when == "_":
+                    drain(body, fixed)
+                else:
+                    names, rate = [], []
+                    drain(body, names, rate)
+                    try: lvl = int(str(when))
+                    except ValueError: continue
+                    if names:
+                        later.append({"level": lvl, "kind": grp, "names": names,
+                                      "rate": (rate[0] if rate else "")})
+
+        # spell-list expansion, keyed by the spell level it becomes available at
+        exp = blk.get("expanded") or {}
+        if isinstance(exp, dict):
+            for when, body in exp.items():
+                names = []
+                drain(body, names)
+                if not names: continue
+                key = str(when).lstrip("s") if str(when) != "_" else "1"
+                expanded.setdefault(key, []).extend(names)
+
+        if not (fixed or choose or later or expanded): continue
         b = {"fixed": fixed, "choose": choose}
+        if later:    b["later"] = sorted(later, key=lambda x: x["level"])
+        if expanded: b["expanded"] = expanded
         if blk.get("name"): b["name"] = blk["name"]
         ab = blk.get("ability")
         # "ability" is usually a code or "inherit", but can be an object ({"choose": [...]})

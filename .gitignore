@@ -27,3 +27,7 @@ dropbox.*
 *.accesstoken
 *.refreshtoken
 *.verifier
+
+# Azure deployment is personal infrastructure, kept out of the repository. It holds
+# subscription and tenant ids and is of no use to anyone else.
+tools/deploy-azure.ps1

@@ -2407,12 +2407,42 @@
     else{var mod=abMod(totalScore(sc.ability));spellsCount=Math.max(1,mod+(sc.caster==="full"?L:Math.floor(L/2)));}
     return {sc:sc,ability:sc.ability,cantripsKnown:cantripsKnown,spellsCount:spellsCount,maxLevel:maxLevel,prepared:prepared};
   }
+  /* A feat can widen the list you choose from rather than hand you a spell: Mark of
+     Storm adds levitate and sleet storm to a wizard's options once the slots to cast
+     them exist. The keys are the spell level each group unlocks at, which is the level
+     of the spells in it, so the picker's own level limit already gates them correctly.
+     Spells granted outright at a later class level are collected here too. */
+  /* Names arrive title-cased from the generator, which turns "gust of wind" into
+     "Gust Of Wind". The spell list is the authority on how a spell is written, so the
+     canonical name is used wherever one is found. */
+  function properSpellName(n){
+    var s=spellByName(String(n));
+    return (s&&s.name)?s.name:n;
+  }
+  function featSpellExtras(){
+    var names={},later=[];
+    allChosenFeats().forEach(function(rec){
+      var sb=featSpellBlock(rec.ft,rec.base,rec.store);
+      if(!sb)return;
+      var exp=sb.expanded||{};
+      for(var lvl in exp)(exp[lvl]||[]).forEach(function(n){names[String(n).toLowerCase()]=1;});
+      (sb.later||[]).forEach(function(g){
+        if(g.level>state.level)return;              // not reached yet
+        later.push({from:rec.ft.name,names:g.names||[],rate:g.rate||"",kind:g.kind||""});
+      });
+    });
+    return {expanded:names,later:later};
+  }
   function classSpellList(minL,maxL){
     var ed=state.edition,role=sidekickRole();
     // a sidekick draws on the class lists its role names, having none of its own
     var names=role?role.lists:[state.className];
+    var extra=featSpellExtras().expanded;
     return (window.CC_SPELLS||[]).filter(function(s){
-      if(s.level<minL||s.level>maxL||!s.cls[ed])return false;
+      if(s.level<minL||s.level>maxL)return false;
+      // a feat may have added this spell to your list even though the class has not
+      if(extra[String(s.name).toLowerCase()])return true;
+      if(!s.cls[ed])return false;
       for(var i=0;i<names.length;i++)if(s.cls[ed].indexOf(names[i])>=0)return true;
       return false;
     });
@@ -3548,11 +3578,26 @@
     allChosenFeats().forEach(function(rec){
       var got=[],p=featPicks(rec.ft,rec.base,rec.store);
       var sb=featSpellBlock(rec.ft,rec.base,rec.store);
-      if(sb)(sb.fixed||[]).forEach(function(v){got.push(v);});
-      (p.spells||[]).forEach(function(v){got.push(v);});
-      if(!got.length)return;
-      featItems.push({name:rec.ft.name+" spells",
-        entries:["You gain "+got.join(", ")+"."],
+      if(sb)(sb.fixed||[]).forEach(function(v){got.push(properSpellName(v));});
+      (p.spells||[]).forEach(function(v){got.push(properSpellName(v));});
+      var lines=[];
+      if(got.length)lines.push("You gain "+got.join(", ")+".");
+      // spells the feat grants only once you reach a level, and how often they may be cast
+      if(sb)(sb.later||[]).forEach(function(g){
+        if(g.level>state.level)return;
+        lines.push("From level "+g.level+": "+
+                   (g.names||[]).map(properSpellName).join(", ")+
+                   (g.rate?" ("+g.rate+")":"")+".");
+      });
+      // and the spells it merely adds to your list, which you still have to learn
+      if(sb&&sb.expanded){
+        var add=[];
+        for(var lv in sb.expanded)(sb.expanded[lv]||[]).forEach(function(n){add.push(properSpellName(n));});
+        if(add.length)lines.push("Added to your spell list, to learn or prepare as your own: "+
+                                 add.join(", ")+".");
+      }
+      if(!lines.length)return;
+      featItems.push({name:rec.ft.name+" spells",entries:lines,
         origin:rec.ft.name+" - spells from the feat"});
     });
     // the options a feat let you choose (Metamagic Adept's two Metamagic options, and so on)
