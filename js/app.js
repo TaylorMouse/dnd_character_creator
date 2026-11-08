@@ -293,9 +293,16 @@
       });
       sel.appendChild(g);
     }
+    /* Anything outside the core thirteen used to be lumped under Unearthed Arcana,
+       which was true while the Mystic was the only one. 5etools now ships whole books
+       of classes - the World of Warcraft set among them - and calling a published book
+       Unearthed Arcana is simply wrong, so only UA sources are named that. */
+    function isUA(c){return /^UA/.test(String(c.source||""));}
+    var rest=list.filter(function(c){return !c.isCore&&!c.isSidekick;});
     group("Core classes",list.filter(function(c){return c.isCore;}));
     group("Sidekicks",list.filter(function(c){return !c.isCore&&c.isSidekick;}));
-    group("Unearthed Arcana",list.filter(function(c){return !c.isCore&&!c.isSidekick;}));
+    group("Other books",rest.filter(function(c){return !isUA(c);}));
+    group("Unearthed Arcana",rest.filter(isUA));
   }
   function populateLevels(){
     var sel=$("levelSelect");sel.innerHTML="";

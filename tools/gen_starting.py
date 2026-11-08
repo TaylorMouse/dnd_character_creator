@@ -52,7 +52,10 @@ def class_starting(c):
         gold=(m.group(1) if m else ga).strip()
     return {"groups":groups,"gold":gold}
 
-def slugify(name,edition): return re.sub(r"[^a-z0-9]+","-",name.lower()).strip("-")+"-"+edition
+# The slug rule lives in datasrc so every generator agrees: the official printing of a
+# class keeps the bare form, and a same-named class from another book is suffixed with
+# its source.
+def slugify_class(c): return datasrc.class_slug(c)
 
 def bg_starting(b):
     se=b.get("startingEquipment")
@@ -74,7 +77,7 @@ for fn in glob.glob(os.path.join(DATA,"class","class-*.json")):
     d=json.load(open(fn,encoding="utf-8"))
     for c in d.get("class",[]):
         s=class_starting(c)
-        if s: out["classes"][slugify(c["name"],c.get("edition","classic"))]=s
+        if s: out["classes"][slugify_class(c)]=s
 for b in json.load(open(os.path.join(DATA,"backgrounds.json"),encoding="utf-8"))["background"]:
     s=bg_starting(b)
     if s: out["backgrounds"][b["name"]+"|"+b["source"]]=s

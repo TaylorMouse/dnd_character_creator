@@ -1553,7 +1553,18 @@ checkTrue("  ...and appends a new one",C.withFeatureProfs("None",["Smith's Tools
 // =====================================================================
 section("8. Data integrity");
 check("  core class/edition combos",classes.length,26);
-check("  feature files loaded",Object.keys(window.CC_FEATURE_DATA).length,30);
+// a bare number here goes stale every time a book adds a class, so check that every
+// class in the index has a feature file rather than counting them
+(function(){
+  var missing=[];
+  for(var i=0;i<window.CC_CLASSES.length;i++){
+    var s=window.CC_CLASSES[i].slug;
+    if(!window.CC_FEATURE_DATA[s])missing.push(s);
+  }
+  check("  every class in the index has its features",missing.join(",")||"none","none");
+  checkTrue("  the core thirteen are all present",
+    window.CC_CLASSES.filter(function(c){return c.isCore;}).length>=26);
+})();
 checkTrue("  spells loaded",window.CC_SPELLS.length>700);
 checkTrue("  items loaded",window.CC_ITEMS.length>2500);
 checkTrue("  feats loaded",window.CC_FEATS.length>250);
@@ -1687,7 +1698,7 @@ section("13. The classes beyond the core thirteen");
 var noncore=[];
 for(var n13=0;n13<window.CC_CLASSES.length;n13++)
   if(!window.CC_CLASSES[n13].isCore)noncore.push(window.CC_CLASSES[n13]);
-check("  four classes sit outside the core thirteen",noncore.length,4);
+checkTrue("  some classes sit outside the core thirteen",noncore.length>=4);
 for(var q=0;q<noncore.length;q++){
   var cq=noncore[q];
   checkTrue("  "+cq.name+" has feature data",!!window.CC_FEATURE_DATA[cq.slug]);
@@ -1696,12 +1707,22 @@ for(var q=0;q<noncore.length;q++){
 var sk=null,myst=null;
 for(var s13=0;s13<noncore.length;s13++){
   if(noncore[s13].isSidekick&&!sk)sk=noncore[s13];
-  if(!noncore[s13].isSidekick)myst=noncore[s13];
+  // by name, not "whichever is not a sidekick": other books now add classes too
+  if(noncore[s13].name==="Mystic")myst=noncore[s13];
 }
 checkTrue("  a sidekick is flagged as one",!!sk);
 check("  and carries no hit die of its own",sk?(sk.hdFaces||null):"?",null);
 checkTrue("  the Mystic is not flagged a sidekick",!!myst&&!myst.isSidekick);
 check("  and has a hit die like any class",myst?myst.hdFaces:0,8);
+// every class offered must have a hit die, or the sheet shows "d null" and no hit points
+(function(){
+  var noHd=[];
+  for(var i=0;i<window.CC_CLASSES.length;i++){
+    var c=window.CC_CLASSES[i];
+    if(!c.hdFaces&&!c.isSidekick)noHd.push(c.name+" ("+c.source+")");
+  }
+  check("  every class that is not a sidekick has a hit die",noHd.join(", ")||"none","none");
+})();
 
 // every one of them renders a sheet at 1st and 20th level
 for(var r13=0;r13<noncore.length;r13++){

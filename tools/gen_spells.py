@@ -137,7 +137,10 @@ p1=_os.path.join(_RES, 'data-spells.js')
 io.open(p1,"w",encoding="utf-8").write("// Auto-generated from 5etools v"+datasrc.version()+" spells + spell-source lookup\nwindow.CC_SPELLS = "+json.dumps(uniq,ensure_ascii=False)+";\n")
 
 # spellcasting progression per class slug
-def slugify(name,edition): return re.sub(r"[^a-z0-9]+","-",name.lower()).strip("-")+"-"+edition
+# The slug rule lives in datasrc so every generator agrees: the official printing of a
+# class keeps the bare form, and a same-named class from another book is suffixed with
+# its source.
+def slugify_class(c): return datasrc.class_slug(c)
 def toint(x):
     m=re.search(r"\d+",str(x)); return int(m.group()) if m else 0
 def parse_slots(c):
@@ -162,7 +165,7 @@ for fn in glob.glob(os.path.join(DATA,"class","class-*.json")):
     d=json.load(open(fn,encoding="utf-8"))
     for c in d.get("class",[]):
         if not (c.get("casterProgression") or c.get("cantripProgression")): continue
-        sc[slugify(c["name"],c.get("edition","classic"))]={
+        sc[slugify_class(c)]={
             "ability":ABIL.get(c.get("spellcastingAbility"),c.get("spellcastingAbility")),
             "caster":c.get("casterProgression"),
             "cantrips":c.get("cantripProgression"),

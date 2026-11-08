@@ -180,10 +180,59 @@ def build_proficiencies(c):
         "skills": skills,
     }
 
+# Two books may name a class the same thing. The World of Warcraft book has its own
+# Druid, Monk, Paladin, Rogue and Warlock, and a slug of name-plus-edition is the same
+# for both, so the second written silently replaced the first - the official Druid came
+# out with no features and no subclasses at all.
+#
+# The official printing keeps the bare slug, because saved characters record it and
+# renaming one would orphan every character built on it. Anything colliding with it is
+# suffixed with its source instead.
+OFFICIAL = datasrc.OFFICIAL_SOURCES
+
+def _class_order(doc_class):
+    # official first, so it claims the bare slug; then stable by source for repeatability
+    src = doc_class.get("source", "")
+    return (0 if src in OFFICIAL else 1, src, doc_class.get("name", ""))
+
+# A book may reskin a class rather than write a new one: the World of Warcraft Mage is
+# the Wizard under another name, and a reskin carries no hit die because it takes the
+# one belonging to the class it reskins.
+_BY_NAME_SOURCE = {}
+for _d in docs:
+    for _c in _d.get("class", []):
+        _BY_NAME_SOURCE[(_c.get("name"), _c.get("source"))] = _c
+
+def _reskin_base(c):
+    """The class a reskin is based on, following the chain if there is one."""
+    seen = set()
+    while True:
+        ref = c.get("reskinOf")
+        if isinstance(ref, list): ref = ref[0] if ref else None
+        if not isinstance(ref, str): return None
+        nm, _, src = ref.partition("|")
+        key = (nm, src or c.get("source"))
+        if key in seen or key not in _BY_NAME_SOURCE: return None
+        seen.add(key)
+        nxt = _BY_NAME_SOURCE[key]
+        if nxt.get("hd"): return nxt
+        c = nxt
+
 index = []
-for d in docs:
-    for c in d.get("class", []):
-        edition = c.get("edition","classic"); name = c["name"]; slug = slugify(name, edition)
+_all_classes = [(d, c) for d in docs for c in d.get("class", [])]
+_all_classes.sort(key=lambda dc: _class_order(dc[1]))
+for d, c in _all_classes:
+    if True:
+        edition = c.get("edition","classic"); name = c["name"]
+
+        # A reskin that adds nothing of its own is a rename, not a class: the World of
+        # Warcraft Mage is the Wizard, Priest the Cleric. Offering them would put nine
+        # entries in the list that hand a player an empty class - no features, no
+        # subclasses - so only reskins that bring their own features are kept.
+        if c.get("reskinOf") and not c.get("classFeatures"):
+            continue
+
+        slug = datasrc.class_slug(c)
         refLookup = {}; seen = set()
         optionLists = {}     # featureName -> [opt_slim,...]
         inlineChoiceCount = {}   # featureName -> count (for non-progression inline options)
@@ -252,7 +301,7 @@ for d in docs:
 
         obj = {"key": slug, "name": name, "source": c["source"], "edition": edition,
                "hd": c.get("hd", {"number":1,"faces":c.get("hd",{}).get("faces")}),
-               "hdFaces": c.get("hd", {}).get("faces"),
+               "hdFaces": (c.get("hd") or (_reskin_base(c) or {}).get("hd") or {}).get("faces"),
                "spellcastingAbility": ABIL.get(c.get("spellcastingAbility"), None),
                "proficiencies": build_proficiencies(c),
                "classFeatures": classFeatures, "subclasses": sorted(subclasses, key=lambda s: s["name"]),
@@ -263,7 +312,11 @@ for d in docs:
             fp.write("window.CC_FEATURE_DATA[%s] = %s;\n" % (json.dumps(slug), json.dumps(obj, ensure_ascii=False)))
         index.append({"name": name, "source": c["source"], "edition": edition,
             "editionLabel": "2024" if edition == "one" else "2014", "hdFaces": obj["hdFaces"],
-            "isCore": name in CORE, "slug": slug, "nSub": len(subclasses),
+            # A core class is one of the thirteen AS PRINTED BY WIZARDS. Testing the
+            # name alone made the World of Warcraft book's Druid, Monk, Paladin, Rogue
+            # and Warlock core too, which put them in the main list of the dropdown.
+            "isCore": (name in CORE and c["source"] in OFFICIAL), "slug": slug,
+            "nSub": len(subclasses),
             # a sidekick is an existing creature that gains class levels, so it brings its
             # own hit die rather than the class supplying one
             "isSidekick": bool(c.get("isSidekick"))})

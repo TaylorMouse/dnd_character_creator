@@ -13,7 +13,7 @@ environment, then the default below.
 import os, sys, json, re
 
 # The mirror to read unless told otherwise.
-DEFAULT_DATA = r"E:\D&D\Tools\5e.tools.src\5etools-src\data"
+DEFAULT_DATA = r"E:\D&D\Tools\5e.tools.src\data"
 
 
 def data_root(argv=None):
@@ -28,7 +28,13 @@ def data_root(argv=None):
 # kept outside the repository. They used to be found only because they happened to sit
 # beside the data folder, which stopped being true the moment the mirror moved - and the
 # only sign was a quietly empty homebrew list. Say where they are instead.
-DEFAULT_HOMEBREW = [r"E:\D&D\Tools\5e.tools"]
+#
+# Named file by file rather than by folder: the book now lives among a campaign's working
+# files, and pointing at that folder would read the adventure JSON beside it as another
+# homebrew book. Run this module directly to see whether these paths still resolve.
+DEFAULT_HOMEBREW = [
+    r"E:\D&D\Campaigns\Vecna - Eve of Ruin\Adventure\Griffin Macaulay; The Griffon's Saddlebag, Book 2.json",
+]
 
 
 def homebrew_paths():
@@ -69,3 +75,71 @@ if __name__ == "__main__":
     print("data root: %s" % data_root())
     print("version  : %s" % version())
     print("homebrew : %s" % ", ".join(homebrew_paths()))
+
+
+# ---- class slugs -------------------------------------------------------------------
+# A class is addressed everywhere by a slug built from its name and edition, and saved
+# characters record it, so the official printing must keep the bare form for ever.
+#
+# That stopped being automatic when 5etools added the World of Warcraft book, which has
+# its own Druid, Monk, Paladin, Rogue and Warlock. Two classes then wanted "druid-classic"
+# and the second written replaced the first, leaving the official Druid with no features
+# and no subclasses. Nothing errored: the file was simply the wrong class.
+#
+# Every generator that keys by slug must agree on the answer, so the rule lives here.
+OFFICIAL_SOURCES = {
+    "PHB", "XPHB", "DMG", "XDMG", "MM", "XMM", "TCE", "XGE", "SCAG", "EFA", "ERLW",
+    "MOT", "AI", "EGW", "MPMM", "VGM", "SCC", "BMT", "DSotDQ", "FTD", "SatO", "TDCSR",
+}
+
+
+def _slug(name, edition):
+    import re
+    return re.sub(r"[^a-z0-9]+", "-", str(name).lower()).strip("-") + "-" + str(edition)
+
+
+def build_class_slugs(classes):
+    """Map every class to its slug, official printings keeping the bare form.
+
+    `classes` is the raw class dicts from data/class/class-*.json. Returns a dict keyed
+    by (name, edition, source), so a generator can look up whichever it is holding.
+    """
+    def order(c):
+        src = c.get("source", "")
+        return (0 if src in OFFICIAL_SOURCES else 1, str(src), str(c.get("name", "")))
+
+    out, taken = {}, {}
+    for c in sorted(classes, key=order):
+        name = c.get("name", "")
+        edition = c.get("edition", "classic")
+        source = c.get("source", "")
+        slug = _slug(name, edition)
+        if slug in taken and taken[slug] != source:
+            slug = _slug("%s-%s" % (name, source or "alt"), edition)
+        taken[slug] = source
+        out[(name, edition, source)] = slug
+    return out
+
+
+_CLASS_SLUGS = None
+
+
+def class_slug(c, root=None):
+    """The slug for one class dict, consistent across every generator.
+
+    The map is built once from the mirror's own class files, so a generator that streams
+    them one at a time still gets the same answer as one that holds them all.
+    """
+    global _CLASS_SLUGS
+    if _CLASS_SLUGS is None:
+        import glob, json
+        classes = []
+        for fn in glob.glob(os.path.join(root or data_root(), "class", "class-*.json")):
+            try:
+                with open(fn, encoding="utf-8") as fh:
+                    classes += json.load(fh).get("class", [])
+            except Exception:
+                pass
+        _CLASS_SLUGS = build_class_slugs(classes)
+    key = (c.get("name", ""), c.get("edition", "classic"), c.get("source", ""))
+    return _CLASS_SLUGS.get(key) or _slug(c.get("name", ""), c.get("edition", "classic"))

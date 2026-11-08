@@ -15,14 +15,17 @@ RES = {"sorcery points":"Sorcery Points","ki points":"Ki Points","focus points":
 def strip(l): return re.sub(r"\{@\w+\s*([^|}]*)[^}]*\}", r"\1", str(l)).strip()
 def toint(x):
     m = re.search(r"\d+", str(x)); return int(m.group()) if m else 0
-def slugify(n, e): return re.sub(r"[^a-z0-9]+", "-", n.lower()).strip("-") + "-" + e
+# The slug rule lives in datasrc so every generator agrees: the official printing of a
+# class keeps the bare form, and a same-named class from another book is suffixed with
+# its source.
+def slugify_class(c): return datasrc.class_slug(c)
 
 out = {}
 for fn in glob.glob(os.path.join(_DATA_ROOT, "class", "class-*.json")):
     if "fluff" in fn: continue
     d = json.load(open(fn, encoding="utf-8"))
     for c in d.get("class", []):
-        slug = slugify(c["name"], c.get("edition", "classic"))
+        slug = slugify_class(c)
         for g in c.get("classTableGroups", []):
             for i, l in enumerate(g.get("colLabels") or []):
                 key = strip(l).lower()
@@ -43,7 +46,7 @@ for fn in glob.glob(os.path.join(_DATA_ROOT, "class", "class-*.json")):
     if "fluff" in fn: continue
     d = json.load(open(fn, encoding="utf-8"))
     for c in d.get("class", []):
-        slug = slugify(c["name"], c.get("edition", "classic"))
+        slug = slugify_class(c)
         for g in c.get("classTableGroups", []):
             for i, l in enumerate(g.get("colLabels") or []):
                 rows = g.get("rows") or []
@@ -66,7 +69,7 @@ for fn in glob.glob(os.path.join(_DATA_ROOT, "class", "class-*.json")):
     if "fluff" in fn: continue
     d = json.load(open(fn, encoding="utf-8"))
     for c in d.get("class", []):
-        slug = slugify(c["name"], c.get("edition", "classic"))
+        slug = slugify_class(c)
         for g in c.get("classTableGroups", []):
             for i, l in enumerate(g.get("colLabels") or []):
                 label = strip(l)
